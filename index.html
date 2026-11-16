@@ -972,10 +972,21 @@
             overflow-y: hidden;
         }
 
-        .btn-expand-input {
+        #user-input.has-text {
+            padding-right: 64px;
+        }
+
+        .input-corner-actions {
             position: absolute;
             top: 7px;
             right: 7px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            z-index: 2;
+        }
+
+        .btn-expand-input {
             width: 24px;
             height: 24px;
             border-radius: var(--radius-xs);
@@ -988,13 +999,25 @@
             justify-content: center;
             cursor: pointer;
             transition: var(--transition-base);
-            z-index: 2;
         }
 
         .btn-expand-input:hover {
             background: var(--base-bg-light);
             color: var(--color-accent);
             border-color: var(--color-accent);
+        }
+
+        #btn-clear-input {
+            display: none;
+        }
+
+        #btn-clear-input.visible {
+            display: inline-flex;
+        }
+
+        #btn-clear-input:hover {
+            color: var(--color-danger);
+            border-color: var(--color-danger);
         }
 
         /* ================================================
@@ -1767,9 +1790,14 @@
         <div class="dock-input-row">
             <div class="input-expand-wrap">
                 <textarea id="user-input" class="chuqing-textarea" rows="1" placeholder="在信笺上写下你的话（发送前自动唤醒当前分支记忆）..."></textarea>
-                <button type="button" class="btn-expand-input" id="btn-expand-input" title="⛶ 全屏展开编辑">
-                    <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
-                </button>
+                <div class="input-corner-actions">
+                    <button type="button" class="btn-expand-input" id="btn-clear-input" title="清空输入框">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                    <button type="button" class="btn-expand-input" id="btn-expand-input" title="⛶ 全屏展开编辑">
+                        <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+                    </button>
+                </div>
             </div>
             <button class="btn-chuqing primary" id="btn-send-msg" style="height:42px;padding:0 18px;flex-shrink:0;">
                 <i class="fa-regular fa-paper-plane"></i>
@@ -2066,6 +2094,7 @@
         <div class="modal-footer" style="justify-content:space-between;align-items:center;">
             <span class="form-hint" id="fullscreen-editor-count">0 字</span>
             <div style="display:flex;gap:8px;">
+                <button class="btn-chuqing" id="btn-clear-fullscreen-editor" style="color:var(--color-danger);">清空</button>
                 <button class="btn-chuqing" id="btn-collapse-fullscreen-editor">收起保留草稿</button>
                 <button class="btn-chuqing primary" id="btn-fullscreen-send">
                     <i class="fa-regular fa-paper-plane"></i>
@@ -3256,6 +3285,10 @@ function buildRecallPromptPack(queryText, recalledList) {
 function autoResizeUserInput() {
     const el = document.getElementById('user-input');
     if (!el) return;
+    const hasText = el.value.length > 0;
+    el.classList.toggle('has-text', hasText);
+    const clearBtn = document.getElementById('btn-clear-input');
+    if (clearBtn) clearBtn.classList.toggle('visible', hasText);
     el.style.height = 'auto';
     const isMobile = window.innerWidth <= 768;
     const maxH = isMobile ? Math.max(180, Math.floor(window.innerHeight * 0.5)) : 140;
@@ -4273,6 +4306,11 @@ function bindEvents() {
     const userInputEl = document.getElementById('user-input');
     userInputEl.addEventListener('input', autoResizeUserInput);
     window.addEventListener('resize', autoResizeUserInput);
+    document.getElementById('btn-clear-input').addEventListener('click', () => {
+        userInputEl.value = '';
+        autoResizeUserInput();
+        userInputEl.focus();
+    });
     document.getElementById('btn-send-msg').addEventListener('click', handleSendChatMessage);
     userInputEl.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -4303,6 +4341,11 @@ function bindEvents() {
         setTimeout(() => fsEditorInput.focus(), 40);
     });
     fsEditorInput.addEventListener('input', updateFsCount);
+    document.getElementById('btn-clear-fullscreen-editor').addEventListener('click', () => {
+        fsEditorInput.value = '';
+        updateFsCount();
+        fsEditorInput.focus();
+    });
     document.getElementById('btn-close-fullscreen-editor').addEventListener('click', () => closeFsEditor(true));
     document.getElementById('btn-collapse-fullscreen-editor').addEventListener('click', () => closeFsEditor(true));
     fsEditorModal.addEventListener('click', (e) => {
