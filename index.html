@@ -1484,6 +1484,7 @@
             <div class="branch-select-wrap" title="切换分支记忆隔间（物理防串线）">
                 <select id="branch-select" class="branch-select"></select>
             </div>
+            <button class="btn-chuqing icon-only" id="btn-branch-persona" title="🎭 编辑当前隔间专属人设 / 角色卡">🎭</button>
             <button class="btn-chuqing icon-only" id="btn-new-branch" title="➕ 新建分支隔间">
                 <i class="fa-solid fa-plus"></i>
             </button>
@@ -1861,6 +1862,34 @@
         </div>
         <div class="modal-footer">
             <button class="btn-chuqing primary" id="btn-done-branch-manager">完成</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================
+     🎭 当前隔间专属人设快捷编辑弹窗
+     ================================================ -->
+<div class="modal-overlay" id="branch-persona-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <span class="modal-title">🎭 隔间专属人设 [<span id="persona-modal-branch-name">main</span>]</span>
+            <button class="btn-chuqing icon-only" id="btn-close-persona-modal">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">
+                    <span>专属角色卡 / 世界观 / 破限设定</span>
+                    <span style="font-weight:400;font-size:11px;color:var(--color-bot-text);">仅对当前隔间生效，互不串戏</span>
+                </label>
+                <textarea id="persona-modal-input" class="chuqing-textarea" rows="7" placeholder="在这里直接写当前隔间专属的角色设定、世界观、回复风格或破限要求（切换隔间会自动切换，清空保存即为关闭专属设定）..."></textarea>
+                <span class="form-hint" id="persona-modal-global-hint"></span>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-chuqing" id="btn-cancel-persona-modal">取消</button>
+            <button class="btn-chuqing primary" id="btn-save-persona-modal">💾 保存并同步 GitHub</button>
         </div>
     </div>
 </div>
@@ -2689,6 +2718,15 @@ function renderBranchSelect() {
     document.getElementById('drawer-branch-label').textContent = state.currentBranch;
     const count = getCurrentBranchData().slices.length;
     document.getElementById('memory-count-badge').textContent = count;
+
+    const personaBtn = document.getElementById('btn-branch-persona');
+    if (personaBtn) {
+        const hasBranchPersona = Boolean((state.globalProfile.branchPersonas && state.globalProfile.branchPersonas[state.currentBranch] || '').trim());
+        personaBtn.classList.toggle('bot-style', hasBranchPersona);
+        personaBtn.title = hasBranchPersona
+            ? `🎭 已开启 [${state.currentBranch}] 专属人设（点击快捷编辑）`
+            : `🎭 为 [${state.currentBranch}] 设置专属人设 / 角色卡`;
+    }
 }
 
 function renderTagPickers() {
@@ -3304,6 +3342,69 @@ function bindEvents() {
     document.getElementById('drawer-branch-label').addEventListener('click', openBranchModal);
     document.getElementById('btn-close-branch-manager').addEventListener('click', closeBranchModal);
     document.getElementById('btn-done-branch-manager').addEventListener('click', closeBranchModal);
+
+    // 🎭 隔间专属人设快捷弹窗（直接点分支旁的 🎭 打开）
+    const branchPersonaModal = document.getElementById('branch-persona-modal');
+    const closePersonaModal = () => branchPersonaModal.classList.remove('open');
+    const openPersonaModal = () => {
+        const cur = state.currentBranch;
+        document.getElementById('persona-modal-branch-name').textContent = cur;
+        document.getElementById('persona-modal-input').value =
+            (state.globalProfile.branchPersonas && state.globalProfile.branchPersonas[cur]) || '';
+        const gPersona = (state.globalProfile.persona || '').trim();
+        const hintEl = document.getElementById('persona-modal-global-hint');
+        hintEl.textContent = gPersona
+            ? `💡 当前已设置全局底座，对话/导出时会自动合并为「全局底座 + 本隔间设定」。全局底座预览：${gPersona.slice(0, 48)}${gPersona.length > 48 ? '…' : ''}`
+            : '💡 提示：未填写全局底座（可在 ⚙️ 中设置跨隔间共同设定），当前仅使用本隔间专属人设。';
+        branchPersonaModal.classList.add('open');
+        setTimeout(() => document.getElementById('persona-modal-input').focus(), 40);
+    };
+
+    document.getElementById('btn-branch-persona').addEventListener('click', openPersonaModal);
+    document.getElementById('btn-close-persona-modal').addEventListener('click', closePersonaModal);
+    document.getElementById('btn-cancel-persona-modal').addEventListener('click', closePersonaModal);
+    branchPersonaModal.addEventListener('click', (e) => {
+        if (e.target === branchPersonaModal) closePersonaModal();
+    });
+
+    document.getElementById('btn-save-persona-modal').addEventListener('click', async () => {
+        const branch = state.currentBranch;
+        const val = document.getElementById('persona-modal-input').value.trim();
+
+        const applyBranchPersona = () => {
+            state.globalProfile.branchPersonas = state.globalProfile.branchPersonas || {};
+            if (val) state.globalProfile.branchPersonas[branch] = val;
+            else delete state.globalProfile.branchPersonas[branch];
+            const cfgInput = document.getElementById('cfg-branch-persona');
+            if (cfgInput) cfgInput.value = val;
+        };
+
+        applyBranchPersona();
+        closePersonaModal();
+
+        if (!isGithubConfigured()) {
+            saveLocalState();
+            renderAllUI();
+            showToast(val ? '隔间人设已保存' : '已清空隔间专属人设', `[${branch}] 本地缓存已更新`, 'success');
+            return;
+        }
+
+        showLoading('SAVING PERSONA', `正在保存 [${branch}] 专属人设并同步 GitHub...`);
+        try {
+            if (!state.globalProfile.sha) {
+                await syncGlobalProfileFromGithub();
+                applyBranchPersona();
+            }
+            await saveGlobalProfileListToGithub(`Update persona for branch ${branch}`);
+            showToast(val ? '隔间人设已保存并同步' : '已清空隔间专属人设', `[${branch}] 已同步至云端 global_profile.json`, 'success');
+        } catch (e) {
+            saveLocalState();
+            renderAllUI();
+            showToast('本地已保存', `GitHub 同步失败: ${e.message}`, 'warning');
+        } finally {
+            hideLoading();
+        }
+    });
 
     const handleConfirmAddBranch = async () => {
         const inputEl = document.getElementById('new-branch-input');
