@@ -2886,9 +2886,10 @@ function renderChatMessages() {
         messages = [{
             id: '#00',
             isUser: false,
+            isSystemNotice: true,
             name: 'Gemini · 初晴档案馆',
             time: getTimeStr(),
-            text: `欢迎回到「${state.currentBranch}」分支记忆隔间。\n\n• 如果你平时主力用 **官方 Gemini App** 聊天：直接在上方「官方 App 记忆伴侣台」粘贴内容一键向量化入库，或者输入话题点「唤醒」一键复制记忆包带回官方 App。\n• 如果你打开了电脑/手机浏览器上的 **gemini.google.com 官网**：配合文件夹里的油猴脚本即可免复制一键抓对话入库！\n• 当然，你也可以直接在下方信笺输入框里和我对话，每次发消息前我都会自动唤醒最相关的长期记忆。`,
+            text: `欢迎回到「${state.currentBranch}」分支记忆隔间。\n\n• 如果你平时主力用 官方 Gemini App 聊天：直接在上方「记忆伴侣台」粘贴内容一键向量化入库，或者输入话题点「唤醒」一键复制记忆包带回官方 App。\n• 如果你打开了电脑/手机浏览器上的 gemini.google.com 官网：配合同目录的油猴脚本即可免复制一键抓对话入库！\n• 当然，你也可以直接在下方信笺输入框里和我对话，每次发消息前我都会自动唤醒最相关的长期记忆。`,
             recalled: []
         }];
     }
@@ -2928,6 +2929,11 @@ function renderChatMessages() {
             `;
         }
 
+        const actionsHtml = m.isSystemNotice
+            ? `<span style="font-size:11px;color:var(--color-text-faded);">🔒 系统导览卡片 · 不会发送给模型</span>`
+            : `<button class="mes-action-link btn-card-archive" title="将本条消息直接提炼存入当前分支记忆库">📥 存入记忆库</button>
+               <button class="mes-action-link btn-card-copy" title="复制本条消息内容">📋 复制</button>`;
+
         mesDiv.innerHTML = `
             <div class="ch_name">
                 <span>${escapeHtml(m.name)}</span>
@@ -2936,8 +2942,7 @@ function renderChatMessages() {
             ${recallHtml}
             <div class="mes_text">${escapeHtml(m.text)}</div>
             <div class="mes-card-actions">
-                <button class="mes-action-link btn-card-archive" title="将本条消息直接提炼存入当前分支记忆库">📥 存入记忆库</button>
-                <button class="mes-action-link btn-card-copy" title="复制本条消息内容">📋 复制</button>
+                ${actionsHtml}
             </div>
         `;
 
@@ -2952,12 +2957,12 @@ function renderChatMessages() {
         }
 
         // 绑定单条卡片快速入库与复制
-        mesDiv.querySelector('.btn-card-copy').addEventListener('click', () => {
+        mesDiv.querySelector('.btn-card-copy')?.addEventListener('click', () => {
             navigator.clipboard.writeText(m.text);
             showToast('已复制消息', '内容已复制到剪贴板', 'info');
         });
 
-        mesDiv.querySelector('.btn-card-archive').addEventListener('click', () => {
+        mesDiv.querySelector('.btn-card-archive')?.addEventListener('click', () => {
             document.getElementById('quick-archive-text').value = m.text;
             switchViewMode('companion');
             showToast('已填入伴侣归档台', '确认标签后点击「生成向量并归档 GitHub」即可', 'info');
@@ -3097,7 +3102,7 @@ async function handleSendChatMessage() {
             ? recalled.map((r, i) => `[记忆${i + 1} | ${r.slice.date} | #${(r.slice.tags || []).join(' #')}]: ${r.slice.text}`).join('\n')
             : '（当前分支暂无命中记忆）';
 
-        const recentTurns = history.slice(-6).map(m => `${m.isUser ? '用户' : 'AI'}: ${m.text}`).join('\n');
+        const recentTurns = history.filter(m => !m.isSystemNotice).slice(-6).map(m => `${m.isUser ? '用户' : 'AI'}: ${m.text}`).join('\n');
         const effPersona = getEffectivePersona();
         const sysInstruction = [
             effPersona,
@@ -3140,7 +3145,7 @@ async function triggerRoundMemoryExtraction(isSilentAuto = false) {
         showToast('暂无对话可提取', '请先进行对话或使用上方伴侣台直接粘贴归档', 'warning');
         return;
     }
-    const recentText = history.slice(-Math.max(state.config.autoTurns * 2, 4))
+    const recentText = history.filter(m => !m.isSystemNotice).slice(-Math.max(state.config.autoTurns * 2, 4))
         .map(m => `${m.isUser ? '我' : 'Gemini'}: ${m.text}`)
         .join('\n');
 
