@@ -1674,14 +1674,14 @@
             <div class="form-group">
                 <label class="form-label">
                     <span>1. 模型服务商与 API Key</span>
-                    <span style="font-weight:400;font-size:11px;color:var(--color-bot-text);">仅保存在本地浏览器 localStorage</span>
+                    <button type="button" class="mes-action-link" id="btn-fetch-models">🔄 拉取可用模型列表</button>
                 </label>
                 <select id="cfg-api-provider" class="chuqing-input" style="margin-bottom:6px;">
                     <option value="gemini">✨ Google Gemini (官方 / 反代)</option>
                     <option value="siliconflow">🚀 硅基流动 SiliconFlow (国内直连免魔法)</option>
                 </select>
                 <input type="password" id="cfg-gemini-key" class="chuqing-input" placeholder="AIzaSy... 或 硅基流动 sk-...">
-                <span class="form-hint">支持 Google AI Studio 免费 Key，或硅基流动（SiliconFlow）<code>sk-...</code> 密钥（<code>BAAI/bge-m3</code> 向量模型与多款对话模型均可免费调用）。</span>
+                <span class="form-hint">仅保存在本地浏览器 localStorage。填好 Key 后点上方「🔄 拉取可用模型列表」，即可直接下拉点选模型，不用手敲模型名。</span>
             </div>
 
             <div class="form-grid-2">
@@ -1691,14 +1691,14 @@
                 </div>
                 <div class="form-group">
                     <label class="form-label">对话/总结模型</label>
-                    <input type="text" id="cfg-chat-model" class="chuqing-input" placeholder="gemini-2.5-flash">
+                    <select id="cfg-chat-model" class="chuqing-input"></select>
                 </div>
             </div>
 
             <div class="form-grid-2">
                 <div class="form-group">
                     <label class="form-label">向量模型 (Embedding)</label>
-                    <input type="text" id="cfg-embed-model" class="chuqing-input" placeholder="text-embedding-004">
+                    <select id="cfg-embed-model" class="chuqing-input"></select>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Top-K 召回条数 / 自动总结轮数</label>
@@ -1827,7 +1827,19 @@ const STORAGE_KEYS = {
     GLOBAL_PROFILE: 'chuqing_rag_global_profile_v1',
     CURRENT_BRANCH: 'chuqing_rag_current_branch_v1',
     LOCAL_BRANCHES: 'chuqing_rag_branches_cache_v1',
-    CHAT_HISTORY: 'chuqing_rag_chat_history_v1'
+    CHAT_HISTORY: 'chuqing_rag_chat_history_v1',
+    FETCHED_MODELS: 'chuqing_rag_fetched_models_v1'
+};
+
+const PRESET_MODELS = {
+    gemini: {
+        chat: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+        embed: ['text-embedding-004', 'gemini-embedding-001']
+    },
+    siliconflow: {
+        chat: ['Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'THUDM/glm-4-9b-chat'],
+        embed: ['BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'netease-youdao/bce-embedding-base_v1', 'Pro/BAAI/bge-m3']
+    }
 };
 
 const DEFAULT_TAGS = ['核心设定', '日常点滴', '重要事件', '偏好习惯', '约定待办', '剧情进度', '感情升温'];
@@ -3222,42 +3234,162 @@ function bindEvents() {
         showToast('已导出 JSON', `分支 [${state.currentBranch}] 备份已下载`, 'info');
     });
 
-    // 配置弹窗
+    // 配置弹窗与模型拉取
     const settingsModal = document.getElementById('settings-modal');
+
+    function getCachedFetchedModels() {
+        try {
+            return JSON.parse(localStorage.getItem(STORAGE_KEYS.FETCHED_MODELS) || '{}');
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function populateModelSelects(provider, customChatList = null, customEmbedList = null, selectedChat = '', selectedEmbed = '') {
+        const pKey = provider === 'siliconflow' ? 'siliconflow' : 'gemini';
+        const cached = getCachedFetchedModels()[pKey] || {};
+        const presets = PRESET_MODELS[pKey];
+
+        const chatList = Array.from(new Set([...(customChatList || cached.chat || presets.chat)]));
+        const embedList = Array.from(new Set([...(customEmbedList || cached.embed || presets.embed)]));
+
+        if (selectedChat && !chatList.includes(selectedChat)) chatList.unshift(selectedChat);
+        if (selectedEmbed && !embedList.includes(selectedEmbed)) embedList.unshift(selectedEmbed);
+
+        const chatEl = document.getElementById('cfg-chat-model');
+        const embedEl = document.getElementById('cfg-embed-model');
+
+        chatEl.innerHTML = '';
+        chatList.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            chatEl.appendChild(opt);
+        });
+        chatEl.value = (selectedChat && chatList.includes(selectedChat)) ? selectedChat : (chatList[0] || '');
+
+        embedEl.innerHTML = '';
+        embedList.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            embedEl.appendChild(opt);
+        });
+        embedEl.value = (selectedEmbed && embedList.includes(selectedEmbed)) ? selectedEmbed : (embedList[0] || '');
+    }
+
+    async function fetchModelsFromAPI() {
+        const provider = document.getElementById('cfg-api-provider').value || 'gemini';
+        const key = document.getElementById('cfg-gemini-key').value.trim();
+        const base = document.getElementById('cfg-gemini-base').value.trim().replace(/\/+$/, '');
+
+        if (!key) {
+            showToast('请先填写 API Key', '填入 Gemini 或硅基流动密钥后才能拉取可用模型列表', 'warning');
+            return;
+        }
+
+        const btn = document.getElementById('btn-fetch-models');
+        btn.disabled = true;
+        btn.textContent = '⏳ 拉取中...';
+        try {
+            let chatModels = [];
+            let embedModels = [];
+            const useOpenAI = provider === 'siliconflow' || base.includes('siliconflow') || base.endsWith('/v1') || key.startsWith('sk-');
+
+            if (useOpenAI) {
+                const v1Base = (!base || base.includes('generativelanguage.googleapis.com'))
+                    ? 'https://api.siliconflow.cn/v1'
+                    : (base.endsWith('/v1') ? base : `${base}/v1`);
+
+                if (v1Base.includes('siliconflow.cn')) {
+                    const [chatRes, embRes] = await Promise.all([
+                        fetch(`${v1Base}/models?sub_type=chat`, { headers: { 'Authorization': `Bearer ${key}` } }),
+                        fetch(`${v1Base}/models?sub_type=embedding`, { headers: { 'Authorization': `Bearer ${key}` } })
+                    ]);
+                    if (chatRes.ok) {
+                        const cData = await chatRes.json();
+                        chatModels = (cData.data || []).map(m => m.id).filter(Boolean);
+                    }
+                    if (embRes.ok) {
+                        const eData = await embRes.json();
+                        embedModels = (eData.data || []).map(m => m.id).filter(Boolean);
+                    }
+                }
+
+                if (chatModels.length === 0 && embedModels.length === 0) {
+                    const res = await fetch(`${v1Base}/models`, {
+                        headers: { 'Authorization': `Bearer ${key}` }
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+                    const data = await res.json();
+                    const ids = (data.data || []).map(m => m.id).filter(Boolean);
+                    const embedRe = /embed|bge-|bce-embedding|m3e|jina-embeddings/i;
+                    const excludeChatRe = /embed|reranker|flux|stable-diffusion|whisper|tts|fishaudio|cosyvoice|sensevoice|video/i;
+                    embedModels = ids.filter(id => embedRe.test(id));
+                    chatModels = ids.filter(id => !excludeChatRe.test(id));
+                }
+            } else {
+                const gBase = base || 'https://generativelanguage.googleapis.com';
+                const res = await fetch(`${gBase}/v1beta/models?key=${encodeURIComponent(key)}&pageSize=100`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+                const data = await res.json();
+                (data.models || []).forEach(m => {
+                    const id = (m.name || '').replace(/^models\//, '');
+                    if (!id) return;
+                    const methods = m.supportedGenerationMethods || [];
+                    if (methods.includes('embedContent') || id.includes('embedding')) {
+                        embedModels.push(id);
+                    }
+                    if (methods.includes('generateContent')) {
+                        chatModels.push(id);
+                    }
+                });
+            }
+
+            if (chatModels.length === 0) chatModels = PRESET_MODELS[useOpenAI ? 'siliconflow' : 'gemini'].chat;
+            if (embedModels.length === 0) embedModels = PRESET_MODELS[useOpenAI ? 'siliconflow' : 'gemini'].embed;
+
+            const pKey = useOpenAI ? 'siliconflow' : 'gemini';
+            const cache = getCachedFetchedModels();
+            cache[pKey] = { chat: chatModels, embed: embedModels };
+            localStorage.setItem(STORAGE_KEYS.FETCHED_MODELS, JSON.stringify(cache));
+
+            const curChat = document.getElementById('cfg-chat-model').value;
+            const curEmbed = document.getElementById('cfg-embed-model').value;
+            populateModelSelects(pKey, chatModels, embedModels, curChat, curEmbed);
+            showToast('模型列表拉取成功', `共获取 ${chatModels.length} 个对话模型、${embedModels.length} 个向量模型`, 'success');
+        } catch (err) {
+            showToast('拉取模型失败', err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔄 拉取可用模型列表';
+        }
+    }
+
+    document.getElementById('btn-fetch-models').addEventListener('click', fetchModelsFromAPI);
+
     document.getElementById('cfg-api-provider').addEventListener('change', e => {
         const val = e.target.value;
         const baseEl = document.getElementById('cfg-gemini-base');
-        const chatEl = document.getElementById('cfg-chat-model');
-        const embedEl = document.getElementById('cfg-embed-model');
         if (val === 'siliconflow') {
             if (!baseEl.value.trim() || baseEl.value.includes('generativelanguage.googleapis.com')) {
                 baseEl.value = 'https://api.siliconflow.cn/v1';
             }
-            if (!chatEl.value.trim() || chatEl.value.trim() === 'gemini-2.5-flash') {
-                chatEl.value = 'Qwen/Qwen2.5-7B-Instruct';
-            }
-            if (!embedEl.value.trim() || embedEl.value.trim() === 'text-embedding-004') {
-                embedEl.value = 'BAAI/bge-m3';
-            }
+            populateModelSelects('siliconflow', null, null, 'Qwen/Qwen2.5-7B-Instruct', 'BAAI/bge-m3');
         } else {
             if (!baseEl.value.trim() || baseEl.value.includes('api.siliconflow.cn')) {
                 baseEl.value = 'https://generativelanguage.googleapis.com';
             }
-            if (!chatEl.value.trim() || chatEl.value.trim() === 'Qwen/Qwen2.5-7B-Instruct') {
-                chatEl.value = 'gemini-2.5-flash';
-            }
-            if (!embedEl.value.trim() || embedEl.value.trim() === 'BAAI/bge-m3') {
-                embedEl.value = 'text-embedding-004';
-            }
+            populateModelSelects('gemini', null, null, 'gemini-2.5-flash', 'text-embedding-004');
         }
     });
 
     document.getElementById('btn-open-settings').addEventListener('click', () => {
-        document.getElementById('cfg-api-provider').value = state.config.apiProvider || 'gemini';
+        const provider = state.config.apiProvider || 'gemini';
+        document.getElementById('cfg-api-provider').value = provider;
         document.getElementById('cfg-gemini-key').value = state.config.geminiKey;
         document.getElementById('cfg-gemini-base').value = state.config.geminiBase;
-        document.getElementById('cfg-chat-model').value = state.config.chatModel;
-        document.getElementById('cfg-embed-model').value = state.config.embedModel;
+        populateModelSelects(provider, null, null, state.config.chatModel, state.config.embedModel);
         document.getElementById('cfg-top-k').value = state.config.topK;
         document.getElementById('cfg-auto-turns').value = state.config.autoTurns;
         document.getElementById('cfg-github-pat').value = state.config.githubPat;
