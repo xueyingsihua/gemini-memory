@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.5.0
+// @version      1.5.1
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -583,7 +583,7 @@
                     model,
                     query: queryText,
                     documents: docs,
-                    top_n: Math.min(topK, docs.length),
+                    top_n: docs.length,
                     return_documents: false
                 })
             });
@@ -594,7 +594,8 @@
                 .map(r => {
                     const orig = coarseItems[r.index];
                     if (!orig) return null;
-                    const finalScore = Number(r.relevance_score || 0) + (orig.exactBonus > 0 ? 0.1 : 0);
+                    const rerankScore = Number(r.relevance_score || 0);
+                    const finalScore = (rerankScore * 0.65) + (orig.score * 0.35) + (orig.exactBonus > 0 ? 0.25 : 0);
                     return { slice: orig.slice, score: finalScore };
                 })
                 .filter(item => item && (threshold <= 0 || item.score >= threshold))
