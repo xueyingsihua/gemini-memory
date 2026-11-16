@@ -2244,6 +2244,9 @@ async function syncGlobalProfileFromGithub() {
                 branchList: Array.isArray(remote.json.branchList) ? remote.json.branchList : state.globalProfile.branchList,
                 sha: remote.sha
             };
+            if (state.globalProfile.branchList.length > 0 && !state.globalProfile.branchList.includes(state.currentBranch)) {
+                state.currentBranch = state.globalProfile.branchList[0];
+            }
             saveLocalState();
         } else {
             // 初始化创建 global_profile.json

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.3.0
+// @version      1.3.1
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -864,7 +864,34 @@
             showToast('已切换分支', `当前归档目标: branches/${state.currentBranch}.json`);
         });
 
-        document.getElementById('cq-btn-save-cfg').addEventListener('click', () => {
+        async function syncProfileFromGithub(silent = false) {
+            if (!state.githubPat || !state.githubRepo) {
+                if (!silent) showToast('请先配置 GitHub', '展开下方 ⚙️ 填入 PAT 与 Repo', 'warn');
+                return;
+            }
+            try {
+                const remote = await githubGetFile('global_profile.json');
+                if (remote?.json) {
+                    if (Array.isArray(remote.json.branchList) && remote.json.branchList.length > 0) {
+                        state.branchList = remote.json.branchList;
+                        if (!state.branchList.includes(state.currentBranch)) {
+                            state.currentBranch = state.branchList[0];
+                        }
+                    }
+                    if (Array.isArray(remote.json.customTags)) state.customTags = remote.json.customTags;
+                    if (typeof remote.json.persona === 'string') state.persona = remote.json.persona;
+                    saveConfig();
+                    renderPanelState();
+                    if (!silent) {
+                        showToast('同步成功', '已从 GitHub 同步最新分支列表与自定义标签池');
+                    }
+                }
+            } catch (err) {
+                if (!silent) showToast('同步失败', err.message, 'err');
+            }
+        }
+
+        document.getElementById('cq-btn-save-cfg').addEventListener('click', async () => {
             state.apiProvider = document.getElementById('cq-cfg-provider').value || 'gemini';
             state.geminiKey = document.getElementById('cq-cfg-key').value.trim();
             state.chatModel = document.getElementById('cq-cfg-chat-model').value || (state.apiProvider === 'siliconflow' ? 'Qwen/Qwen2.5-7B-Instruct' : 'gemini-2.5-flash');
@@ -881,28 +908,13 @@
             state.githubPat = document.getElementById('cq-cfg-pat').value.trim();
             state.githubRepo = document.getElementById('cq-cfg-repo').value.trim();
             saveConfig();
-            showToast('配置已保存', '现在可以直接一键抓对话归档或唤醒记忆啦！');
+            showToast('配置已保存', '正在从 GitHub 同步你的分支隔间与标签...');
+            if (state.githubPat && state.githubRepo) {
+                await syncProfileFromGithub(false);
+            }
         });
 
-        document.getElementById('cq-btn-sync-profile').addEventListener('click', async () => {
-            if (!state.githubPat || !state.githubRepo) {
-                showToast('请先配置 GitHub', '展开下方 ⚙️ 填入 PAT 与 Repo', 'warn');
-                return;
-            }
-            try {
-                const remote = await githubGetFile('global_profile.json');
-                if (remote?.json) {
-                    if (Array.isArray(remote.json.branchList)) state.branchList = remote.json.branchList;
-                    if (Array.isArray(remote.json.customTags)) state.customTags = remote.json.customTags;
-                    if (remote.json.persona) state.persona = remote.json.persona;
-                    saveConfig();
-                    renderPanelState();
-                    showToast('同步成功', '已从 GitHub 同步最新分支列表与自定义标签池');
-                }
-            } catch (err) {
-                showToast('同步失败', err.message, 'err');
-            }
-        });
+        document.getElementById('cq-btn-sync-profile').addEventListener('click', () => syncProfileFromGithub(false));
 
         document.getElementById('cq-btn-scrape-preview').addEventListener('click', () => {
             const scraped = scrapeOfficialGeminiChat(4);
@@ -1003,6 +1015,10 @@
                 btn.textContent = '🔮 唤醒并填入';
             }
         });
+
+        if (state.githubPat && state.githubRepo) {
+            syncProfileFromGithub(true);
+        }
     }
 
     setTimeout(createUI, 1200);
