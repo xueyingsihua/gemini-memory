@@ -1673,25 +1673,50 @@
         <div class="modal-body">
             <div class="form-group">
                 <label class="form-label">
-                    <span>1. 模型服务商与 API Key</span>
-                    <button type="button" class="mes-action-link" id="btn-fetch-models">🔄 拉取可用模型列表</button>
+                    <span>1A. 对话与总结接口 (Chat / Summary)</span>
+                    <button type="button" class="mes-action-link" id="btn-fetch-chat-models">🔄 拉取对话模型</button>
                 </label>
                 <select id="cfg-api-provider" class="chuqing-input" style="margin-bottom:6px;">
                     <option value="gemini">✨ Google Gemini (官方 / 反代)</option>
                     <option value="siliconflow">🚀 硅基流动 SiliconFlow (国内直连免魔法)</option>
                 </select>
-                <input type="password" id="cfg-gemini-key" class="chuqing-input" placeholder="AIzaSy... 或 硅基流动 sk-...">
-                <span class="form-hint">仅保存在本地浏览器 localStorage。填好 Key 后点上方「🔄 拉取可用模型列表」，即可直接下拉点选模型，不用手敲模型名。</span>
+                <input type="password" id="cfg-gemini-key" class="chuqing-input" placeholder="对话接口 API Key (如 Gemini AIzaSy... 或 硅基流动 sk-...)">
             </div>
 
             <div class="form-grid-2">
                 <div class="form-group">
-                    <label class="form-label">API Base URL (可选反代)</label>
+                    <label class="form-label">对话接口 Base URL (可选反代)</label>
                     <input type="text" id="cfg-gemini-base" class="chuqing-input" placeholder="https://generativelanguage.googleapis.com">
                 </div>
                 <div class="form-group">
                     <label class="form-label">对话/总结模型</label>
                     <select id="cfg-chat-model" class="chuqing-input"></select>
+                </div>
+            </div>
+
+            <hr style="border:none;border-top:1px dashed var(--color-border);margin:4px 0;">
+
+            <div class="form-group">
+                <label class="form-label">
+                    <span>1B. 向量与重排接口 (Embedding &amp; Rerank)</span>
+                    <button type="button" class="mes-action-link" id="btn-fetch-embed-models">🔄 拉取向量/重排模型</button>
+                </label>
+                <select id="cfg-embed-provider" class="chuqing-input">
+                    <option value="same">🔗 与上方对话接口共用同一家 Key</option>
+                    <option value="siliconflow">🚀 单独使用：硅基流动 SiliconFlow (推荐：免费 bge-m3 + rerank)</option>
+                    <option value="gemini">✨ 单独使用：Google Gemini (text-embedding-004)</option>
+                </select>
+                <span class="form-hint">拆开配置后，即可实现「对话/总结用 Gemini，向量/重排用硅基流动」。</span>
+            </div>
+
+            <div id="cfg-embed-auth-box" class="form-grid-2" style="display:none;">
+                <div class="form-group">
+                    <label class="form-label">向量/重排专用 API Key</label>
+                    <input type="password" id="cfg-embed-key" class="chuqing-input" placeholder="硅基流动 sk-... 或 Gemini AIzaSy...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">向量/重排 Base URL</label>
+                    <input type="text" id="cfg-embed-base" class="chuqing-input" placeholder="https://api.siliconflow.cn/v1">
                 </div>
             </div>
 
@@ -1716,7 +1741,7 @@
                         <input type="checkbox" id="cfg-rerank-enabled">
                         <span>开启 Rerank 二次精排 (默认关)</span>
                     </label>
-                    <span class="form-hint">需配合硅基流动 Key 使用；开启后先初筛前 15 条，再用重排模型精挑 Top-K。</span>
+                    <span class="form-hint">需向量接口为硅基流动/OpenAI 兼容通道；开启后先初筛前 15 条，再用重排模型精挑 Top-K。</span>
                 </div>
                 <div class="form-group">
                     <label class="form-label">重排模型 (Rerank)</label>
@@ -1749,7 +1774,15 @@
                 <label class="form-label">
                     <span>4. 跨分支全局底座设定 (global_profile.json)</span>
                 </label>
-                <textarea id="cfg-global-profile" class="chuqing-textarea" rows="3" placeholder="在这里写跨分支共享的人设、你的称呼、核心长期设定（所有分支都会自动携带）..."></textarea>
+                <textarea id="cfg-global-profile" class="chuqing-textarea" rows="2" placeholder="跨分支共享的人设、称呼或通用指令（若配合官网使用可留空）..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <span>5. 当前隔间 [<span id="cfg-cur-branch-name">main</span>] 专属人设 / 角色卡</span>
+                    <span style="font-weight:400;font-size:11px;color:var(--color-bot-text);">随隔间独立隔离，当 Chatbox 用</span>
+                </label>
+                <textarea id="cfg-branch-persona" class="chuqing-textarea" rows="3" placeholder="在这里写当前隔间专属的角色设定、世界观、回复风格或破限要求（切换隔间会自动切换，互不串戏）..."></textarea>
             </div>
         </div>
         <div class="modal-footer">
@@ -1902,6 +1935,9 @@ const state = {
         geminiKey: '',
         geminiBase: 'https://generativelanguage.googleapis.com',
         chatModel: 'gemini-2.5-flash',
+        embedProvider: 'same',
+        embedKey: '',
+        embedBase: 'https://api.siliconflow.cn/v1',
         embedModel: 'text-embedding-004',
         rerankEnabled: false,
         rerankModel: 'BAAI/bge-reranker-v2-m3',
@@ -1914,6 +1950,7 @@ const state = {
     },
     globalProfile: {
         persona: '',
+        branchPersonas: {},
         customTags: [...DEFAULT_TAGS],
         branchList: ['main', 'daily_life', 'story_branch'],
         sha: null
@@ -2025,35 +2062,48 @@ function computeLocalFallbackVector(text) {
     return compactVector(vec.map(v => v / norm));
 }
 
-function isSiliconFlowOrOpenAI() {
-    const p = state.config.apiProvider;
-    const base = (state.config.geminiBase || '').toLowerCase();
-    const key = (state.config.geminiKey || '').trim();
-    return p === 'siliconflow' || base.includes('siliconflow') || base.endsWith('/v1') || key.startsWith('sk-');
+function resolveApiEndpoint(provider, rawKey, rawBase) {
+    const key = (rawKey || '').trim();
+    const base = (rawBase || '').trim();
+    const useOpenAI = provider === 'siliconflow' || base.toLowerCase().includes('siliconflow') || base.toLowerCase().endsWith('/v1') || key.startsWith('sk-');
+    const cleanBase = base.replace(/\/+$/, '');
+    return {
+        provider: useOpenAI ? 'siliconflow' : 'gemini',
+        useOpenAI,
+        key,
+        base: useOpenAI
+            ? ((!cleanBase || cleanBase.includes('generativelanguage.googleapis.com'))
+                ? 'https://api.siliconflow.cn/v1'
+                : (cleanBase.endsWith('/v1') ? cleanBase : `${cleanBase}/v1`))
+            : (cleanBase || 'https://generativelanguage.googleapis.com')
+    };
 }
 
-function getOpenAIBaseUrl() {
-    let base = (state.config.geminiBase || '').trim().replace(/\/+$/, '');
-    if (!base || base.includes('generativelanguage.googleapis.com')) {
-        return 'https://api.siliconflow.cn/v1';
-    }
-    return base.endsWith('/v1') ? base : `${base}/v1`;
+function getChatApiConfig() {
+    return resolveApiEndpoint(state.config.apiProvider || 'gemini', state.config.geminiKey, state.config.geminiBase);
 }
 
-// 调用向量 Embedding API (支持 Google Gemini 与硅基流动 SiliconFlow / OpenAI 兼容接口)
+function getEmbedApiConfig() {
+    const ep = state.config.embedProvider || 'same';
+    if (ep === 'same') return getChatApiConfig();
+    return resolveApiEndpoint(ep, state.config.embedKey || state.config.geminiKey, state.config.embedBase);
+}
+
+// 调用向量 Embedding API (独立使用 getEmbedApiConfig，支持与对话模型拆分)
 async function getEmbeddingVector(text) {
-    const key = state.config.geminiKey.trim();
+    const embedCfg = getEmbedApiConfig();
+    const key = embedCfg.key;
     if (!key) {
         return computeLocalFallbackVector(text);
     }
 
-    if (isSiliconFlowOrOpenAI()) {
+    if (embedCfg.useOpenAI) {
         const rawModel = (state.config.embedModel || '').trim();
         const embedModel = (!rawModel || rawModel.includes('text-embedding') || rawModel.includes('gemini-embedding'))
             ? 'BAAI/bge-m3'
             : rawModel;
         try {
-            const url = `${getOpenAIBaseUrl()}/embeddings`;
+            const url = `${embedCfg.base}/embeddings`;
             const res = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -2081,7 +2131,7 @@ async function getEmbeddingVector(text) {
         return computeLocalFallbackVector(text);
     }
 
-    const base = (state.config.geminiBase || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
+    const base = embedCfg.base;
     const modelsToTry = [state.config.embedModel || 'text-embedding-004', 'gemini-embedding-001'];
 
     for (const modelName of modelsToTry) {
@@ -2136,21 +2186,21 @@ function lexicalOverlapScore(query, slice) {
     return (hits / Math.max(q.length, 1)) * 0.25;
 }
 
-// Rerank 二次精排（硅基流动 /v1/rerank）
+// Rerank 二次精排（使用向量/重排通道 getEmbedApiConfig，支持与对话通道拆分）
 async function rerankCandidates(queryText, coarseItems, topK, threshold) {
-    const key = state.config.geminiKey.trim();
-    if (!key || !isSiliconFlowOrOpenAI() || coarseItems.length <= 1) return null;
+    const embedCfg = getEmbedApiConfig();
+    if (!embedCfg.key || !embedCfg.useOpenAI || coarseItems.length <= 1) return null;
     const model = (state.config.rerankModel || '').trim() || 'BAAI/bge-reranker-v2-m3';
     try {
         const docs = coarseItems.map(c => {
             const tagsStr = (c.slice.tags || []).map(t => `#${t}`).join(' ');
             return `${c.slice.date ? '[' + c.slice.date + '] ' : ''}${tagsStr ? tagsStr + ' ' : ''}${c.slice.text || ''}`;
         });
-        const res = await fetch(`${getOpenAIBaseUrl()}/rerank`, {
+        const res = await fetch(`${embedCfg.base}/rerank`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${key}`
+                'Authorization': `Bearer ${embedCfg.key}`
             },
             body: JSON.stringify({
                 model,
@@ -2206,8 +2256,9 @@ async function retrieveTopKMemories(queryText, filterTag = '', topK = state.conf
         return { slice, score: finalScore, exactBonus };
     }).sort((a, b) => b.score - a.score);
 
-    // 若已开启 Rerank 且配置了硅基流动，先粗排取前 15 条进行精排
-    if (state.config.rerankEnabled && isSiliconFlowOrOpenAI() && scoredAll.length > 1) {
+    // 若已开启 Rerank 且向量接口为硅基流动/OpenAI 兼容，先粗排取前 15 条进行精排
+    const embedCfg = getEmbedApiConfig();
+    if (state.config.rerankEnabled && embedCfg.useOpenAI && scoredAll.length > 1) {
         const coarsePool = scoredAll.slice(0, Math.max(topK * 3, 15));
         const reranked = await rerankCandidates(queryText, coarsePool, topK, threshold);
         if (reranked !== null) return reranked;
@@ -2368,6 +2419,16 @@ async function githubListBranchFiles() {
     }
 }
 
+function buildGlobalProfilePayload() {
+    return {
+        persona: state.globalProfile.persona || '',
+        branchPersonas: state.globalProfile.branchPersonas || {},
+        customTags: state.globalProfile.customTags,
+        branchList: state.globalProfile.branchList,
+        updatedAt: new Date().toISOString()
+    };
+}
+
 // 同步加载全局底座 global_profile.json（并扫描 branches/ 目录自动恢复已有隔间）
 async function syncGlobalProfileFromGithub() {
     if (!isGithubConfigured()) return;
@@ -2383,6 +2444,9 @@ async function syncGlobalProfileFromGithub() {
 
             state.globalProfile = {
                 persona: remote.json.persona ?? state.globalProfile.persona,
+                branchPersonas: (remote.json.branchPersonas && typeof remote.json.branchPersonas === 'object')
+                    ? remote.json.branchPersonas
+                    : (state.globalProfile.branchPersonas || {}),
                 customTags: Array.isArray(remote.json.customTags) ? remote.json.customTags : state.globalProfile.customTags,
                 branchList: mergedBranches,
                 sha: remote.sha
@@ -2391,12 +2455,7 @@ async function syncGlobalProfileFromGithub() {
                 state.currentBranch = state.globalProfile.branchList[0];
             }
             if (hadOrphaned) {
-                const newSha = await githubPutFile('global_profile.json', {
-                    persona: state.globalProfile.persona,
-                    customTags: state.globalProfile.customTags,
-                    branchList: state.globalProfile.branchList,
-                    updatedAt: new Date().toISOString()
-                }, remote.sha, 'Recover branchList from branches/ directory');
+                const newSha = await githubPutFile('global_profile.json', buildGlobalProfilePayload(), remote.sha, 'Recover branchList from branches/ directory');
                 state.globalProfile.sha = newSha;
             }
             saveLocalState();
@@ -2408,12 +2467,7 @@ async function syncGlobalProfileFromGithub() {
                     state.currentBranch = discoveredBranches[0];
                 }
             }
-            const newSha = await githubPutFile('global_profile.json', {
-                persona: state.globalProfile.persona,
-                customTags: state.globalProfile.customTags,
-                branchList: state.globalProfile.branchList,
-                updatedAt: new Date().toISOString()
-            }, null, 'Init global_profile.json');
+            const newSha = await githubPutFile('global_profile.json', buildGlobalProfilePayload(), null, 'Init global_profile.json');
             state.globalProfile.sha = newSha;
             saveLocalState();
         }
@@ -2482,15 +2536,16 @@ async function pushCurrentBranchToGithub(commitMsg = 'Archive memory slice') {
    4. Gemini 对话与自动 100 字摘要提炼
    ============================================================================ */
 async function callGeminiChat(promptText, systemInstruction = '') {
-    const key = state.config.geminiKey.trim();
+    const chatCfg = getChatApiConfig();
+    const key = chatCfg.key;
     if (!key) {
-        throw new Error('请先点击右上角 ⚙️ 配置 API Key');
+        throw new Error('请先点击右上角 ⚙️ 配置对话接口 API Key');
     }
 
-    if (isSiliconFlowOrOpenAI()) {
+    if (chatCfg.useOpenAI) {
         const rawModel = (state.config.chatModel || '').trim();
         const model = (!rawModel || rawModel.startsWith('gemini-')) ? 'Qwen/Qwen2.5-7B-Instruct' : rawModel;
-        const url = `${getOpenAIBaseUrl()}/chat/completions`;
+        const url = `${chatCfg.base}/chat/completions`;
         const messages = [];
         if (systemInstruction) {
             messages.push({ role: 'system', content: systemInstruction });
@@ -2513,7 +2568,7 @@ async function callGeminiChat(promptText, systemInstruction = '') {
         return (data.choices?.[0]?.message?.content || '').trim();
     }
 
-    const base = (state.config.geminiBase || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
+    const base = chatCfg.base;
     const model = state.config.chatModel.trim() || 'gemini-2.5-flash';
     const url = `${base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
 
@@ -2581,6 +2636,7 @@ function loadLocalState() {
 
         const gp = JSON.parse(localStorage.getItem(STORAGE_KEYS.GLOBAL_PROFILE) || '{}');
         if (typeof gp.persona === 'string') state.globalProfile.persona = gp.persona;
+        if (gp.branchPersonas && typeof gp.branchPersonas === 'object') state.globalProfile.branchPersonas = gp.branchPersonas;
         if (Array.isArray(gp.customTags) && gp.customTags.length) state.globalProfile.customTags = gp.customTags;
         if (Array.isArray(gp.branchList) && gp.branchList.length) state.globalProfile.branchList = gp.branchList;
 
@@ -2931,12 +2987,20 @@ async function createAndPushMemorySlice({ rawText, useAiSummary = false, tags = 
     }
 }
 
+// 合并 [跨分支全局底座] + [当前隔间专属人设]
+function getEffectivePersona() {
+    const g = (state.globalProfile.persona || '').trim();
+    const b = ((state.globalProfile.branchPersonas && state.globalProfile.branchPersonas[state.currentBranch]) || '').trim();
+    return [g, b].filter(Boolean).join('\n\n');
+}
+
 // 格式化「一键复制回官方 Gemini App」的记忆唤醒包
 function buildRecallPromptPack(queryText, recalledList) {
     const lines = [];
     lines.push('【✉️ 初晴 · 长期记忆唤醒档案】');
-    if (state.globalProfile.persona) {
-        lines.push(`▸ 全局底座设定：${state.globalProfile.persona}`);
+    const effPersona = getEffectivePersona();
+    if (effPersona) {
+        lines.push(`▸ 设定与人设：\n${effPersona}`);
     }
     lines.push(`▸ 当前记忆分支：${state.currentBranch}`);
     if (recalledList && recalledList.length > 0) {
@@ -2989,7 +3053,11 @@ async function handleSendChatMessage() {
             : '（当前分支暂无命中记忆）';
 
         const recentTurns = history.slice(-6).map(m => `${m.isUser ? '用户' : 'AI'}: ${m.text}`).join('\n');
-        const sysInstruction = `${state.globalProfile.persona}\n\n【当前分支 (${state.currentBranch}) 唤醒的长期记忆】：\n${memoryBlock}`;
+        const effPersona = getEffectivePersona();
+        const sysInstruction = [
+            effPersona,
+            `【当前分支 (${state.currentBranch}) 唤醒的长期记忆】：\n${memoryBlock}`
+        ].filter(Boolean).join('\n\n');
         const fullPrompt = `近期对话上下文：\n${recentTurns}\n\n请直接回复用户的最新一句话。`;
 
         const replyText = await callGeminiChat(fullPrompt, sysInstruction);
@@ -3106,12 +3174,7 @@ function bindEvents() {
         saveLocalState();
         renderAllUI();
         if (isGithubConfigured()) {
-            const newSha = await githubPutFile('global_profile.json', {
-                persona: state.globalProfile.persona,
-                customTags: state.globalProfile.customTags,
-                branchList: state.globalProfile.branchList,
-                updatedAt: new Date().toISOString()
-            }, state.globalProfile.sha, commitMsg);
+            const newSha = await githubPutFile('global_profile.json', buildGlobalProfilePayload(), state.globalProfile.sha, commitMsg);
             state.globalProfile.sha = newSha;
             saveLocalState();
         }
@@ -3172,6 +3235,10 @@ function bindEvents() {
 
                     const idx = state.globalProfile.branchList.indexOf(bName);
                     if (idx !== -1) state.globalProfile.branchList[idx] = newName;
+                    if (state.globalProfile.branchPersonas && state.globalProfile.branchPersonas[bName] !== undefined) {
+                        state.globalProfile.branchPersonas[newName] = state.globalProfile.branchPersonas[bName];
+                        delete state.globalProfile.branchPersonas[bName];
+                    }
                     if (state.currentBranch === bName) state.currentBranch = newName;
 
                     if (isGithubConfigured()) {
@@ -3202,6 +3269,9 @@ function bindEvents() {
                     const oldSha = state.branchCache[bName]?.sha || null;
                     delete state.branchCache[bName];
                     state.globalProfile.branchList = state.globalProfile.branchList.filter(x => x !== bName);
+                    if (state.globalProfile.branchPersonas) {
+                        delete state.globalProfile.branchPersonas[bName];
+                    }
                     if (state.currentBranch === bName) {
                         state.currentBranch = state.globalProfile.branchList[0];
                     }
@@ -3511,23 +3581,13 @@ function bindEvents() {
         }
     }
 
-    function populateModelSelects(provider, customChatList = null, customEmbedList = null, selectedChat = '', selectedEmbed = '', customRerankList = null, selectedRerank = '') {
+    function populateChatModelSelect(provider, customChatList = null, selectedChat = '') {
         const pKey = provider === 'siliconflow' ? 'siliconflow' : 'gemini';
         const cached = getCachedFetchedModels()[pKey] || {};
-        const presets = PRESET_MODELS[pKey];
-
-        const chatList = Array.from(new Set([...(customChatList || cached.chat || presets.chat)]));
-        const embedList = Array.from(new Set([...(customEmbedList || cached.embed || presets.embed)]));
-        const rerankList = Array.from(new Set([...(customRerankList || cached.rerank || presets.rerank || PRESET_MODELS.siliconflow.rerank)]));
-
+        const chatList = Array.from(new Set([...(customChatList || cached.chat || PRESET_MODELS[pKey].chat)]));
         if (selectedChat && !chatList.includes(selectedChat)) chatList.unshift(selectedChat);
-        if (selectedEmbed && !embedList.includes(selectedEmbed)) embedList.unshift(selectedEmbed);
-        if (selectedRerank && !rerankList.includes(selectedRerank)) rerankList.unshift(selectedRerank);
 
         const chatEl = document.getElementById('cfg-chat-model');
-        const embedEl = document.getElementById('cfg-embed-model');
-        const rerankEl = document.getElementById('cfg-rerank-model');
-
         chatEl.innerHTML = '';
         chatList.forEach(m => {
             const opt = document.createElement('option');
@@ -3536,7 +3596,21 @@ function bindEvents() {
             chatEl.appendChild(opt);
         });
         chatEl.value = (selectedChat && chatList.includes(selectedChat)) ? selectedChat : (chatList[0] || '');
+    }
 
+    function populateEmbedRerankSelects(embedProvider, customEmbedList = null, selectedEmbed = '', customRerankList = null, selectedRerank = '') {
+        const effectiveProv = embedProvider === 'same'
+            ? (document.getElementById('cfg-api-provider').value || 'gemini')
+            : embedProvider;
+        const pKey = effectiveProv === 'siliconflow' ? 'siliconflow' : 'gemini';
+        const cached = getCachedFetchedModels()[pKey] || {};
+        const embedList = Array.from(new Set([...(customEmbedList || cached.embed || PRESET_MODELS[pKey].embed)]));
+        const rerankList = Array.from(new Set([...(customRerankList || cached.rerank || PRESET_MODELS[pKey].rerank || PRESET_MODELS.siliconflow.rerank)]));
+
+        if (selectedEmbed && !embedList.includes(selectedEmbed)) embedList.unshift(selectedEmbed);
+        if (selectedRerank && !rerankList.includes(selectedRerank)) rerankList.unshift(selectedRerank);
+
+        const embedEl = document.getElementById('cfg-embed-model');
         embedEl.innerHTML = '';
         embedList.forEach(m => {
             const opt = document.createElement('option');
@@ -3546,6 +3620,7 @@ function bindEvents() {
         });
         embedEl.value = (selectedEmbed && embedList.includes(selectedEmbed)) ? selectedEmbed : (embedList[0] || '');
 
+        const rerankEl = document.getElementById('cfg-rerank-model');
         rerankEl.innerHTML = '';
         rerankList.forEach(m => {
             const opt = document.createElement('option');
@@ -3556,105 +3631,107 @@ function bindEvents() {
         rerankEl.value = (selectedRerank && rerankList.includes(selectedRerank)) ? selectedRerank : (rerankList[0] || '');
     }
 
-    async function fetchModelsFromAPI() {
-        const provider = document.getElementById('cfg-api-provider').value || 'gemini';
-        const key = document.getElementById('cfg-gemini-key').value.trim();
-        const base = document.getElementById('cfg-gemini-base').value.trim().replace(/\/+$/, '');
+    async function fetchModelCatalog(provider, rawKey, rawBase) {
+        const endpoint = resolveApiEndpoint(provider, rawKey, rawBase);
+        if (!endpoint.key) {
+            throw new Error('请先填写对应的 API Key');
+        }
+        let chatModels = [];
+        let embedModels = [];
+        let rerankModels = [];
 
-        if (!key) {
-            showToast('请先填写 API Key', '填入 Gemini 或硅基流动密钥后才能拉取可用模型列表', 'warning');
-            return;
+        if (endpoint.useOpenAI) {
+            if (endpoint.base.includes('siliconflow.cn')) {
+                const [chatRes, embRes, rerankRes] = await Promise.all([
+                    fetch(`${endpoint.base}/models?sub_type=chat`, { headers: { 'Authorization': `Bearer ${endpoint.key}` } }),
+                    fetch(`${endpoint.base}/models?sub_type=embedding`, { headers: { 'Authorization': `Bearer ${endpoint.key}` } }),
+                    fetch(`${endpoint.base}/models?sub_type=reranker`, { headers: { 'Authorization': `Bearer ${endpoint.key}` } })
+                ]);
+                if (chatRes.ok) chatModels = ((await chatRes.json()).data || []).map(m => m.id).filter(Boolean);
+                if (embRes.ok) embedModels = ((await embRes.json()).data || []).map(m => m.id).filter(Boolean);
+                if (rerankRes.ok) rerankModels = ((await rerankRes.json()).data || []).map(m => m.id).filter(Boolean);
+            }
+            if (chatModels.length === 0 && embedModels.length === 0) {
+                const res = await fetch(`${endpoint.base}/models`, { headers: { 'Authorization': `Bearer ${endpoint.key}` } });
+                if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+                const ids = ((await res.json()).data || []).map(m => m.id).filter(Boolean);
+                embedModels = ids.filter(id => /embed|bge-(?!rerank)|bce-embedding|m3e|jina-embeddings/i.test(id));
+                rerankModels = ids.filter(id => /rerank/i.test(id));
+                chatModels = ids.filter(id => !/embed|rerank|flux|stable-diffusion|whisper|tts|fishaudio|cosyvoice|sensevoice|video/i.test(id));
+            }
+        } else {
+            const res = await fetch(`${endpoint.base}/v1beta/models?key=${encodeURIComponent(endpoint.key)}&pageSize=100`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+            const data = await res.json();
+            (data.models || []).forEach(m => {
+                const id = (m.name || '').replace(/^models\//, '');
+                if (!id) return;
+                const methods = m.supportedGenerationMethods || [];
+                if (methods.includes('embedContent') || id.includes('embedding')) embedModels.push(id);
+                if (methods.includes('generateContent')) chatModels.push(id);
+            });
         }
 
-        const btn = document.getElementById('btn-fetch-models');
+        const pKey = endpoint.provider;
+        if (!chatModels.length) chatModels = PRESET_MODELS[pKey].chat;
+        if (!embedModels.length) embedModels = PRESET_MODELS[pKey].embed;
+        if (!rerankModels.length) rerankModels = PRESET_MODELS[pKey].rerank;
+
+        const cache = getCachedFetchedModels();
+        cache[pKey] = { chat: chatModels, embed: embedModels, rerank: rerankModels };
+        localStorage.setItem(STORAGE_KEYS.FETCHED_MODELS, JSON.stringify(cache));
+        return { pKey, chatModels, embedModels, rerankModels };
+    }
+
+    document.getElementById('btn-fetch-chat-models').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-fetch-chat-models');
         btn.disabled = true;
         btn.textContent = '⏳ 拉取中...';
         try {
-            let chatModels = [];
-            let embedModels = [];
-            let rerankModels = [];
-            const useOpenAI = provider === 'siliconflow' || base.includes('siliconflow') || base.endsWith('/v1') || key.startsWith('sk-');
-
-            if (useOpenAI) {
-                const v1Base = (!base || base.includes('generativelanguage.googleapis.com'))
-                    ? 'https://api.siliconflow.cn/v1'
-                    : (base.endsWith('/v1') ? base : `${base}/v1`);
-
-                if (v1Base.includes('siliconflow.cn')) {
-                    const [chatRes, embRes, rerankRes] = await Promise.all([
-                        fetch(`${v1Base}/models?sub_type=chat`, { headers: { 'Authorization': `Bearer ${key}` } }),
-                        fetch(`${v1Base}/models?sub_type=embedding`, { headers: { 'Authorization': `Bearer ${key}` } }),
-                        fetch(`${v1Base}/models?sub_type=reranker`, { headers: { 'Authorization': `Bearer ${key}` } })
-                    ]);
-                    if (chatRes.ok) {
-                        const cData = await chatRes.json();
-                        chatModels = (cData.data || []).map(m => m.id).filter(Boolean);
-                    }
-                    if (embRes.ok) {
-                        const eData = await embRes.json();
-                        embedModels = (eData.data || []).map(m => m.id).filter(Boolean);
-                    }
-                    if (rerankRes.ok) {
-                        const rData = await rerankRes.json();
-                        rerankModels = (rData.data || []).map(m => m.id).filter(Boolean);
-                    }
-                }
-
-                if (chatModels.length === 0 && embedModels.length === 0) {
-                    const res = await fetch(`${v1Base}/models`, {
-                        headers: { 'Authorization': `Bearer ${key}` }
-                    });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-                    const data = await res.json();
-                    const ids = (data.data || []).map(m => m.id).filter(Boolean);
-                    const embedRe = /embed|bge-(?!rerank)|bce-embedding|m3e|jina-embeddings/i;
-                    const rerankRe = /rerank/i;
-                    const excludeChatRe = /embed|rerank|flux|stable-diffusion|whisper|tts|fishaudio|cosyvoice|sensevoice|video/i;
-                    embedModels = ids.filter(id => embedRe.test(id));
-                    rerankModels = ids.filter(id => rerankRe.test(id));
-                    chatModels = ids.filter(id => !excludeChatRe.test(id));
-                }
-            } else {
-                const gBase = base || 'https://generativelanguage.googleapis.com';
-                const res = await fetch(`${gBase}/v1beta/models?key=${encodeURIComponent(key)}&pageSize=100`);
-                if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
-                const data = await res.json();
-                (data.models || []).forEach(m => {
-                    const id = (m.name || '').replace(/^models\//, '');
-                    if (!id) return;
-                    const methods = m.supportedGenerationMethods || [];
-                    if (methods.includes('embedContent') || id.includes('embedding')) {
-                        embedModels.push(id);
-                    }
-                    if (methods.includes('generateContent')) {
-                        chatModels.push(id);
-                    }
-                });
+            const provider = document.getElementById('cfg-api-provider').value || 'gemini';
+            const key = document.getElementById('cfg-gemini-key').value;
+            const base = document.getElementById('cfg-gemini-base').value;
+            const res = await fetchModelCatalog(provider, key, base);
+            populateChatModelSelect(res.pKey, res.chatModels, document.getElementById('cfg-chat-model').value);
+            if ((document.getElementById('cfg-embed-provider').value || 'same') === 'same') {
+                populateEmbedRerankSelects('same', res.embedModels, document.getElementById('cfg-embed-model').value, res.rerankModels, document.getElementById('cfg-rerank-model').value);
             }
-
-            const pKey = useOpenAI ? 'siliconflow' : 'gemini';
-            if (chatModels.length === 0) chatModels = PRESET_MODELS[pKey].chat;
-            if (embedModels.length === 0) embedModels = PRESET_MODELS[pKey].embed;
-            if (rerankModels.length === 0) rerankModels = PRESET_MODELS[pKey].rerank;
-
-            const cache = getCachedFetchedModels();
-            cache[pKey] = { chat: chatModels, embed: embedModels, rerank: rerankModels };
-            localStorage.setItem(STORAGE_KEYS.FETCHED_MODELS, JSON.stringify(cache));
-
-            const curChat = document.getElementById('cfg-chat-model').value;
-            const curEmbed = document.getElementById('cfg-embed-model').value;
-            const curRerank = document.getElementById('cfg-rerank-model').value;
-            populateModelSelects(pKey, chatModels, embedModels, curChat, curEmbed, rerankModels, curRerank);
-            showToast('模型列表拉取成功', `共获取 ${chatModels.length} 个对话、${embedModels.length} 个向量、${rerankModels.length} 个重排模型`, 'success');
+            showToast('对话模型拉取成功', `共获取 ${res.chatModels.length} 个对话/总结模型`, 'success');
         } catch (err) {
-            showToast('拉取模型失败', err.message, 'error');
+            showToast('拉取对话模型失败', err.message, 'error');
         } finally {
             btn.disabled = false;
-            btn.textContent = '🔄 拉取可用模型列表';
+            btn.textContent = '🔄 拉取对话模型';
         }
-    }
+    });
 
-    document.getElementById('btn-fetch-models').addEventListener('click', fetchModelsFromAPI);
+    document.getElementById('btn-fetch-embed-models').addEventListener('click', async () => {
+        const btn = document.getElementById('btn-fetch-embed-models');
+        btn.disabled = true;
+        btn.textContent = '⏳ 拉取中...';
+        try {
+            const ep = document.getElementById('cfg-embed-provider').value || 'same';
+            const provider = ep === 'same' ? (document.getElementById('cfg-api-provider').value || 'gemini') : ep;
+            const key = ep === 'same'
+                ? document.getElementById('cfg-gemini-key').value
+                : (document.getElementById('cfg-embed-key').value.trim() || document.getElementById('cfg-gemini-key').value);
+            const base = ep === 'same'
+                ? document.getElementById('cfg-gemini-base').value
+                : document.getElementById('cfg-embed-base').value;
+            const res = await fetchModelCatalog(provider, key, base);
+            populateEmbedRerankSelects(ep, res.embedModels, document.getElementById('cfg-embed-model').value, res.rerankModels, document.getElementById('cfg-rerank-model').value);
+            showToast('向量/重排模型拉取成功', `共获取 ${res.embedModels.length} 个向量、${res.rerankModels.length} 个重排模型`, 'success');
+        } catch (err) {
+            showToast('拉取向量模型失败', err.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = '🔄 拉取向量/重排模型';
+        }
+    });
+
+    function toggleEmbedAuthBox(ep) {
+        document.getElementById('cfg-embed-auth-box').style.display = (ep && ep !== 'same') ? 'grid' : 'none';
+    }
 
     document.getElementById('cfg-api-provider').addEventListener('change', e => {
         const val = e.target.value;
@@ -3663,28 +3740,62 @@ function bindEvents() {
             if (!baseEl.value.trim() || baseEl.value.includes('generativelanguage.googleapis.com')) {
                 baseEl.value = 'https://api.siliconflow.cn/v1';
             }
-            populateModelSelects('siliconflow', null, null, 'Qwen/Qwen2.5-7B-Instruct', 'BAAI/bge-m3', null, 'BAAI/bge-reranker-v2-m3');
+            populateChatModelSelect('siliconflow', null, 'Qwen/Qwen2.5-7B-Instruct');
         } else {
             if (!baseEl.value.trim() || baseEl.value.includes('api.siliconflow.cn')) {
                 baseEl.value = 'https://generativelanguage.googleapis.com';
             }
-            populateModelSelects('gemini', null, null, 'gemini-2.5-flash', 'text-embedding-004', null, 'BAAI/bge-reranker-v2-m3');
+            populateChatModelSelect('gemini', null, 'gemini-2.5-flash');
+        }
+        if (document.getElementById('cfg-embed-provider').value === 'same') {
+            const defEmbed = val === 'siliconflow' ? 'BAAI/bge-m3' : 'text-embedding-004';
+            populateEmbedRerankSelects('same', null, defEmbed, null, 'BAAI/bge-reranker-v2-m3');
+        }
+    });
+
+    document.getElementById('cfg-embed-provider').addEventListener('change', e => {
+        const ep = e.target.value;
+        toggleEmbedAuthBox(ep);
+        const embedBaseEl = document.getElementById('cfg-embed-base');
+        if (ep === 'siliconflow') {
+            if (!embedBaseEl.value.trim() || embedBaseEl.value.includes('generativelanguage.googleapis.com')) {
+                embedBaseEl.value = 'https://api.siliconflow.cn/v1';
+            }
+            populateEmbedRerankSelects('siliconflow', null, 'BAAI/bge-m3', null, 'BAAI/bge-reranker-v2-m3');
+        } else if (ep === 'gemini') {
+            if (!embedBaseEl.value.trim() || embedBaseEl.value.includes('api.siliconflow.cn')) {
+                embedBaseEl.value = 'https://generativelanguage.googleapis.com';
+            }
+            populateEmbedRerankSelects('gemini', null, 'text-embedding-004', null, 'BAAI/bge-reranker-v2-m3');
+        } else {
+            const chatProv = document.getElementById('cfg-api-provider').value || 'gemini';
+            populateEmbedRerankSelects('same', null, chatProv === 'siliconflow' ? 'BAAI/bge-m3' : 'text-embedding-004', null, 'BAAI/bge-reranker-v2-m3');
         }
     });
 
     document.getElementById('btn-open-settings').addEventListener('click', () => {
         const provider = state.config.apiProvider || 'gemini';
+        const embedProvider = state.config.embedProvider || 'same';
         document.getElementById('cfg-api-provider').value = provider;
         document.getElementById('cfg-gemini-key').value = state.config.geminiKey;
         document.getElementById('cfg-gemini-base').value = state.config.geminiBase;
-        populateModelSelects(provider, null, null, state.config.chatModel, state.config.embedModel, null, state.config.rerankModel);
+        populateChatModelSelect(provider, null, state.config.chatModel);
+
+        document.getElementById('cfg-embed-provider').value = embedProvider;
+        toggleEmbedAuthBox(embedProvider);
+        document.getElementById('cfg-embed-key').value = state.config.embedKey || '';
+        document.getElementById('cfg-embed-base').value = state.config.embedBase || 'https://api.siliconflow.cn/v1';
+        populateEmbedRerankSelects(embedProvider, null, state.config.embedModel, null, state.config.rerankModel);
+
         document.getElementById('cfg-rerank-enabled').checked = Boolean(state.config.rerankEnabled);
         document.getElementById('cfg-top-k').value = state.config.topK;
         document.getElementById('cfg-min-score').value = state.config.minScore ?? 0.38;
         document.getElementById('cfg-auto-turns').value = state.config.autoTurns;
         document.getElementById('cfg-github-pat').value = state.config.githubPat;
         document.getElementById('cfg-github-repo').value = state.config.githubRepo;
-        document.getElementById('cfg-global-profile').value = state.globalProfile.persona;
+        document.getElementById('cfg-global-profile').value = state.globalProfile.persona || '';
+        document.getElementById('cfg-cur-branch-name').textContent = state.currentBranch;
+        document.getElementById('cfg-branch-persona').value = (state.globalProfile.branchPersonas && state.globalProfile.branchPersonas[state.currentBranch]) || '';
         settingsModal.classList.add('open');
     });
 
@@ -3702,7 +3813,9 @@ function bindEvents() {
         showLoading('CONNECTING GITHUB', '正在验证仓库权限并同步云端隔间目录...');
         try {
             await syncGlobalProfileFromGithub();
-            document.getElementById('cfg-global-profile').value = state.globalProfile.persona;
+            document.getElementById('cfg-global-profile').value = state.globalProfile.persona || '';
+            document.getElementById('cfg-cur-branch-name').textContent = state.currentBranch;
+            document.getElementById('cfg-branch-persona').value = (state.globalProfile.branchPersonas && state.globalProfile.branchPersonas[state.currentBranch]) || '';
             await loadBranchFromGithub(state.currentBranch, false);
             showToast('GitHub 连接成功', `已同步 ${state.globalProfile.branchList.length} 个云端隔间`, 'success');
         } catch (err) {
@@ -3714,18 +3827,29 @@ function bindEvents() {
 
     document.getElementById('btn-save-settings').addEventListener('click', async () => {
         const wasAlreadySynced = Boolean(state.globalProfile.sha);
-        const prevPersona = state.globalProfile.persona;
+        const prevPersona = state.globalProfile.persona || '';
+        const prevBranchPersona = (state.globalProfile.branchPersonas && state.globalProfile.branchPersonas[state.currentBranch]) || '';
         const inputPersona = document.getElementById('cfg-global-profile').value.trim();
+        const inputBranchPersona = document.getElementById('cfg-branch-persona').value.trim();
 
         const provider = document.getElementById('cfg-api-provider').value || 'gemini';
+        const embedProvider = document.getElementById('cfg-embed-provider').value || 'same';
+        const effectiveEmbedProv = embedProvider === 'same' ? provider : embedProvider;
+
         state.config.apiProvider = provider;
         state.config.geminiKey = document.getElementById('cfg-gemini-key').value.trim();
         state.config.geminiBase = document.getElementById('cfg-gemini-base').value.trim()
             || (provider === 'siliconflow' ? 'https://api.siliconflow.cn/v1' : 'https://generativelanguage.googleapis.com');
         state.config.chatModel = document.getElementById('cfg-chat-model').value.trim()
             || (provider === 'siliconflow' ? 'Qwen/Qwen2.5-7B-Instruct' : 'gemini-2.5-flash');
+
+        state.config.embedProvider = embedProvider;
+        state.config.embedKey = document.getElementById('cfg-embed-key').value.trim();
+        state.config.embedBase = document.getElementById('cfg-embed-base').value.trim()
+            || (effectiveEmbedProv === 'siliconflow' ? 'https://api.siliconflow.cn/v1' : 'https://generativelanguage.googleapis.com');
         state.config.embedModel = document.getElementById('cfg-embed-model').value.trim()
-            || (provider === 'siliconflow' ? 'BAAI/bge-m3' : 'text-embedding-004');
+            || (effectiveEmbedProv === 'siliconflow' ? 'BAAI/bge-m3' : 'text-embedding-004');
+
         state.config.rerankEnabled = document.getElementById('cfg-rerank-enabled').checked;
         state.config.rerankModel = document.getElementById('cfg-rerank-model').value.trim() || 'BAAI/bge-reranker-v2-m3';
         state.config.topK = Math.max(1, parseInt(document.getElementById('cfg-top-k').value, 10) || 5);
@@ -3737,6 +3861,8 @@ function bindEvents() {
 
         if (!isGithubConfigured()) {
             state.globalProfile.persona = inputPersona;
+            state.globalProfile.branchPersonas = state.globalProfile.branchPersonas || {};
+            state.globalProfile.branchPersonas[state.currentBranch] = inputBranchPersona;
             saveLocalState();
             closeSettings();
             renderAllUI();
@@ -3748,20 +3874,22 @@ function bindEvents() {
         closeSettings();
         showLoading('SYNCING PROFILE', '正在从 GitHub 拉取并同步最新隔间与配置...');
         try {
-            // 先从 GitHub 拉取云端已有隔间列表、标签与 sha，绝不用新设备的默认隔间覆盖云端
+            // 先从 GitHub 拉取云端已有隔间列表、标签与人设，绝不用新设备的默认隔间覆盖云端
             await syncGlobalProfileFromGithub();
 
+            const remoteBranchPersona = (state.globalProfile.branchPersonas && state.globalProfile.branchPersonas[state.currentBranch]) || '';
             const shouldPushPersona = (inputPersona && inputPersona !== state.globalProfile.persona)
                 || (wasAlreadySynced && inputPersona !== prevPersona);
+            const shouldPushBranchPersona = (inputBranchPersona && inputBranchPersona !== remoteBranchPersona)
+                || (wasAlreadySynced && inputBranchPersona !== prevBranchPersona);
 
-            if (shouldPushPersona) {
-                state.globalProfile.persona = inputPersona;
-                const newSha = await githubPutFile('global_profile.json', {
-                    persona: state.globalProfile.persona,
-                    customTags: state.globalProfile.customTags,
-                    branchList: state.globalProfile.branchList,
-                    updatedAt: new Date().toISOString()
-                }, state.globalProfile.sha, 'Update global_profile.json');
+            if (shouldPushPersona || shouldPushBranchPersona) {
+                if (shouldPushPersona) state.globalProfile.persona = inputPersona;
+                if (shouldPushBranchPersona) {
+                    state.globalProfile.branchPersonas = state.globalProfile.branchPersonas || {};
+                    state.globalProfile.branchPersonas[state.currentBranch] = inputBranchPersona;
+                }
+                const newSha = await githubPutFile('global_profile.json', buildGlobalProfilePayload(), state.globalProfile.sha, 'Update global_profile.json');
                 state.globalProfile.sha = newSha;
                 saveLocalState();
             }
