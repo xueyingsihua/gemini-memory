@@ -2232,24 +2232,68 @@ async function githubDeleteFile(path, sha = null, commitMsg = 'Remove branch fil
     });
 }
 
-// 同步加载全局底座 global_profile.json
+async function githubListBranchFiles() {
+    if (!isGithubConfigured()) return [];
+    const repo = state.config.githubRepo.trim();
+    const pat = state.config.githubPat.trim();
+    try {
+        const res = await fetch(`https://api.github.com/repos/${repo}/contents/branches?t=${Date.now()}`, {
+            headers: {
+                'Authorization': `Bearer ${pat}`,
+                'Accept': 'application/vnd.github+json'
+            }
+        });
+        if (!res.ok) return [];
+        const items = await res.json();
+        if (!Array.isArray(items)) return [];
+        return items
+            .filter(item => item.type === 'file' && typeof item.name === 'string' && item.name.endsWith('.json'))
+            .map(item => item.name.slice(0, -5));
+    } catch (e) {
+        return [];
+    }
+}
+
+// 同步加载全局底座 global_profile.json（并扫描 branches/ 目录自动恢复已有隔间）
 async function syncGlobalProfileFromGithub() {
     if (!isGithubConfigured()) return;
     try {
-        const remote = await githubGetFile('global_profile.json');
+        const [remote, discoveredBranches] = await Promise.all([
+            githubGetFile('global_profile.json'),
+            githubListBranchFiles()
+        ]);
         if (remote && remote.json) {
+            const remoteBranches = Array.isArray(remote.json.branchList) ? remote.json.branchList : state.globalProfile.branchList;
+            const mergedBranches = Array.from(new Set([...remoteBranches, ...discoveredBranches]));
+            const hadOrphaned = mergedBranches.length > remoteBranches.length;
+
             state.globalProfile = {
                 persona: remote.json.persona ?? state.globalProfile.persona,
                 customTags: Array.isArray(remote.json.customTags) ? remote.json.customTags : state.globalProfile.customTags,
-                branchList: Array.isArray(remote.json.branchList) ? remote.json.branchList : state.globalProfile.branchList,
+                branchList: mergedBranches,
                 sha: remote.sha
             };
             if (state.globalProfile.branchList.length > 0 && !state.globalProfile.branchList.includes(state.currentBranch)) {
                 state.currentBranch = state.globalProfile.branchList[0];
             }
+            if (hadOrphaned) {
+                const newSha = await githubPutFile('global_profile.json', {
+                    persona: state.globalProfile.persona,
+                    customTags: state.globalProfile.customTags,
+                    branchList: state.globalProfile.branchList,
+                    updatedAt: new Date().toISOString()
+                }, remote.sha, 'Recover branchList from branches/ directory');
+                state.globalProfile.sha = newSha;
+            }
             saveLocalState();
         } else {
-            // 初始化创建 global_profile.json
+            // 初始化创建 global_profile.json（若 branches/ 下已有隔间文件则优先沿用）
+            if (discoveredBranches.length > 0) {
+                state.globalProfile.branchList = discoveredBranches;
+                if (!discoveredBranches.includes(state.currentBranch)) {
+                    state.currentBranch = discoveredBranches[0];
+                }
+            }
             const newSha = await githubPutFile('global_profile.json', {
                 persona: state.globalProfile.persona,
                 customTags: state.globalProfile.customTags,
@@ -3412,11 +3456,12 @@ function bindEvents() {
             showToast('参数不完整', '请先填写 GitHub PAT 与 Owner/Repo', 'warning');
             return;
         }
-        showLoading('CONNECTING GITHUB', '正在验证仓库权限并初始化防串线目录...');
+        showLoading('CONNECTING GITHUB', '正在验证仓库权限并同步云端隔间目录...');
         try {
             await syncGlobalProfileFromGithub();
+            document.getElementById('cfg-global-profile').value = state.globalProfile.persona;
             await loadBranchFromGithub(state.currentBranch, false);
-            showToast('GitHub 连接成功', '已自动就绪 global_profile.json 与分支目录', 'success');
+            showToast('GitHub 连接成功', `已同步 ${state.globalProfile.branchList.length} 个云端隔间`, 'success');
         } catch (err) {
             showToast('连接失败', err.message, 'error');
         } finally {
@@ -3425,6 +3470,10 @@ function bindEvents() {
     });
 
     document.getElementById('btn-save-settings').addEventListener('click', async () => {
+        const wasAlreadySynced = Boolean(state.globalProfile.sha);
+        const prevPersona = state.globalProfile.persona;
+        const inputPersona = document.getElementById('cfg-global-profile').value.trim();
+
         const provider = document.getElementById('cfg-api-provider').value || 'gemini';
         state.config.apiProvider = provider;
         state.config.geminiKey = document.getElementById('cfg-gemini-key').value.trim();
@@ -3438,15 +3487,28 @@ function bindEvents() {
         state.config.autoTurns = Math.max(2, parseInt(document.getElementById('cfg-auto-turns').value, 10) || 5);
         state.config.githubPat = document.getElementById('cfg-github-pat').value.trim();
         state.config.githubRepo = document.getElementById('cfg-github-repo').value.trim();
-        state.globalProfile.persona = document.getElementById('cfg-global-profile').value.trim();
+
+        if (!isGithubConfigured()) {
+            state.globalProfile.persona = inputPersona;
+            saveLocalState();
+            closeSettings();
+            renderAllUI();
+            showToast('配置已保存在本地', '随时可开始管理记忆库', 'success');
+            return;
+        }
 
         saveLocalState();
         closeSettings();
-        renderAllUI();
+        showLoading('SYNCING PROFILE', '正在从 GitHub 拉取并同步最新隔间与配置...');
+        try {
+            // 先从 GitHub 拉取云端已有隔间列表、标签与 sha，绝不用新设备的默认隔间覆盖云端
+            await syncGlobalProfileFromGithub();
 
-        if (isGithubConfigured()) {
-            showLoading('SYNCING PROFILE', '正在同步全局底座与当前分支至 GitHub...');
-            try {
+            const shouldPushPersona = (inputPersona && inputPersona !== state.globalProfile.persona)
+                || (wasAlreadySynced && inputPersona !== prevPersona);
+
+            if (shouldPushPersona) {
+                state.globalProfile.persona = inputPersona;
                 const newSha = await githubPutFile('global_profile.json', {
                     persona: state.globalProfile.persona,
                     customTags: state.globalProfile.customTags,
@@ -3454,15 +3516,17 @@ function bindEvents() {
                     updatedAt: new Date().toISOString()
                 }, state.globalProfile.sha, 'Update global_profile.json');
                 state.globalProfile.sha = newSha;
-                await loadBranchFromGithub(state.currentBranch, false);
-                showToast('配置已保存并同步', '本地配置与 GitHub 仓库已同步更新', 'success');
-            } catch (e) {
-                showToast('本地已保存', `GitHub 同步提示: ${e.message}`, 'warning');
-            } finally {
-                hideLoading();
+                saveLocalState();
             }
-        } else {
-            showToast('配置已保存在本地', '随时可开始管理记忆库', 'success');
+
+            await loadBranchFromGithub(state.currentBranch, false);
+            renderAllUI();
+            showToast('配置已保存并同步', `已同步云端隔间 (${state.globalProfile.branchList.length} 个隔间)`, 'success');
+        } catch (e) {
+            renderAllUI();
+            showToast('本地已保存', `GitHub 同步提示: ${e.message}`, 'warning');
+        } finally {
+            hideLoading();
         }
     });
 
