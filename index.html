@@ -440,6 +440,7 @@
         .btn-chuqing.icon-only {
             width: 34px;
             padding: 0;
+            flex-shrink: 0;
         }
 
         .badge-count {
@@ -509,6 +510,13 @@
             height: 7px;
             border-radius: 50%;
             background: var(--base-grey-mid);
+            flex-shrink: 0;
+        }
+
+        #btn-manual-pull,
+        #btn-manage-tags {
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .status-dot.online {
@@ -948,12 +956,45 @@
             gap: 10px;
         }
 
-        #user-input {
+        .input-expand-wrap {
+            position: relative;
             flex: 1;
+            min-width: 0;
+            display: flex;
+        }
+
+        #user-input {
+            width: 100%;
             min-height: 42px;
             max-height: 140px;
             resize: none;
-            padding: 9px 12px;
+            padding: 9px 36px 9px 12px;
+            overflow-y: hidden;
+        }
+
+        .btn-expand-input {
+            position: absolute;
+            top: 7px;
+            right: 7px;
+            width: 24px;
+            height: 24px;
+            border-radius: var(--radius-xs);
+            border: 1px solid rgba(var(--rgb-brown-light), 0.25);
+            background: rgba(var(--rgb-bg-paper), 0.72);
+            color: var(--color-text-light);
+            font-size: 11px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: var(--transition-base);
+            z-index: 2;
+        }
+
+        .btn-expand-input:hover {
+            background: var(--base-bg-light);
+            color: var(--color-accent);
+            border-color: var(--color-accent);
         }
 
         /* ================================================
@@ -1119,6 +1160,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
+            gap: 12px;
         }
 
         .modal-title {
@@ -1126,6 +1168,29 @@
             font-size: 18px;
             font-weight: 700;
             color: var(--color-text-strong);
+            min-width: 0;
+            overflow-wrap: anywhere;
+        }
+
+        #fullscreen-editor-modal .modal-card {
+            max-width: 720px;
+            height: 82vh;
+            max-height: 88vh;
+        }
+
+        #fullscreen-editor-modal .modal-body {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #fullscreen-editor-input {
+            flex: 1;
+            min-height: 0;
+            height: 100%;
+            resize: none;
+            line-height: 1.65;
         }
 
         .modal-body {
@@ -1375,6 +1440,21 @@
 
             .mode-bar {
                 margin: 8px 12px 0 12px;
+                gap: 6px;
+            }
+
+            .sync-status {
+                width: 100%;
+                justify-content: space-between;
+                min-width: 0;
+                gap: 8px;
+            }
+
+            #github-status-text {
+                min-width: 0;
+                flex: 1;
+                overflow-wrap: anywhere;
+                line-height: 1.35;
             }
 
             #companion-panel {
@@ -1435,15 +1515,85 @@
                 font-size: 12px !important;
             }
 
+            #user-input {
+                font-size: 13.5px !important;
+                line-height: 1.5;
+                max-height: 50vh;
+            }
+
             .form-grid-2 {
                 grid-template-columns: 1fr;
+            }
+
+            .form-label {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 3px;
+                line-height: 1.4;
+            }
+
+            .form-label.checkbox-inline {
+                flex-direction: row;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .modal-card {
+                max-height: 92vh;
+            }
+
+            .modal-header {
+                padding: 14px 16px;
+            }
+
+            .modal-title {
+                font-size: 16px;
+                line-height: 1.35;
+            }
+
+            .modal-body {
+                padding: 14px 16px;
+            }
+
+            .modal-footer {
+                padding: 12px 16px;
+            }
+
+            #cfg-global-profile {
+                min-height: 110px;
+                line-height: 1.55;
+            }
+
+            #cfg-branch-persona {
+                min-height: 150px;
+                line-height: 1.55;
+            }
+
+            #persona-modal-input {
+                min-height: 42vh;
+                line-height: 1.6;
+            }
+
+            #fullscreen-editor-modal {
+                padding: 0;
+            }
+
+            #fullscreen-editor-modal .modal-card {
+                width: 100%;
+                max-width: 100%;
+                height: 100dvh;
+                max-height: 100dvh;
+                border-radius: 0;
+                border: none;
+                padding-top: env(safe-area-inset-top, 0px);
+                padding-bottom: env(safe-area-inset-bottom, 0px);
             }
 
             input:not([type="checkbox"]),
             textarea,
             .chuqing-input,
             .chuqing-textarea {
-                font-size: 16px !important;
+                font-size: 14px !important;
             }
 
             #toast-container {
@@ -1615,8 +1765,13 @@
         </div>
 
         <div class="dock-input-row">
-            <textarea id="user-input" class="chuqing-textarea" rows="1" placeholder="在信笺上写下你的话（发送前自动通过 text-embedding-004 唤醒当前分支记忆）..."></textarea>
-            <button class="btn-chuqing primary" id="btn-send-msg" style="height:42px;padding:0 18px;">
+            <div class="input-expand-wrap">
+                <textarea id="user-input" class="chuqing-textarea" rows="1" placeholder="在信笺上写下你的话（发送前自动唤醒当前分支记忆）..."></textarea>
+                <button type="button" class="btn-expand-input" id="btn-expand-input" title="⛶ 全屏展开编辑">
+                    <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
+                </button>
+            </div>
+            <button class="btn-chuqing primary" id="btn-send-msg" style="height:42px;padding:0 18px;flex-shrink:0;">
                 <i class="fa-regular fa-paper-plane"></i>
                 <span>发送</span>
             </button>
@@ -1648,8 +1803,8 @@
 
         <!-- 标签筛选胶囊栏 -->
         <div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-                <span style="font-size:12px;font-weight:700;color:var(--color-text-light);">按 #标签 筛选（点击管理自定义标签池）：</span>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;">
+                <span style="font-size:12px;font-weight:700;color:var(--color-text-light);min-width:0;flex:1;">按 #标签 筛选：</span>
                 <button class="mes-action-link" id="btn-manage-tags">🏷️ 管理标签池</button>
             </div>
             <div class="tag-picker-bar" id="drawer-tag-filter-bar"></div>
@@ -1738,7 +1893,7 @@
 
             <div class="form-grid-2" style="align-items:end;">
                 <div class="form-group">
-                    <label class="form-label" style="justify-content:flex-start;gap:6px;cursor:pointer;">
+                    <label class="form-label checkbox-inline" style="justify-content:flex-start;gap:6px;cursor:pointer;">
                         <input type="checkbox" id="cfg-rerank-enabled">
                         <span>开启 Rerank 二次精排 (默认关)</span>
                     </label>
@@ -1890,6 +2045,33 @@
         <div class="modal-footer">
             <button class="btn-chuqing" id="btn-cancel-persona-modal">取消</button>
             <button class="btn-chuqing primary" id="btn-save-persona-modal">💾 保存并同步 GitHub</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================
+     ✍️ 全屏信笺编辑弹窗 (长文本对话便捷编辑)
+     ================================================ -->
+<div class="modal-overlay" id="fullscreen-editor-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <span class="modal-title">✍️ 全屏信笺编辑 [<span id="fullscreen-editor-branch">main</span>]</span>
+            <button class="btn-chuqing icon-only" id="btn-close-fullscreen-editor" title="收起并保留草稿">
+                <i class="fa-solid fa-compress"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <textarea id="fullscreen-editor-input" class="chuqing-textarea" placeholder="在这里畅所欲言地书写长段对话、剧情或提问..."></textarea>
+        </div>
+        <div class="modal-footer" style="justify-content:space-between;align-items:center;">
+            <span class="form-hint" id="fullscreen-editor-count">0 字</span>
+            <div style="display:flex;gap:8px;">
+                <button class="btn-chuqing" id="btn-collapse-fullscreen-editor">收起保留草稿</button>
+                <button class="btn-chuqing primary" id="btn-fullscreen-send">
+                    <i class="fa-regular fa-paper-plane"></i>
+                    <span>发送</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -3070,6 +3252,18 @@ function buildRecallPromptPack(queryText, recalledList) {
     return lines.join('\n');
 }
 
+// 自动撑高底部输入框（手机端最高可扩展至半屏 50vh）
+function autoResizeUserInput() {
+    const el = document.getElementById('user-input');
+    if (!el) return;
+    el.style.height = 'auto';
+    const isMobile = window.innerWidth <= 768;
+    const maxH = isMobile ? Math.max(180, Math.floor(window.innerHeight * 0.5)) : 140;
+    const nextH = Math.min(el.scrollHeight, maxH);
+    el.style.height = `${Math.max(42, nextH)}px`;
+    el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+}
+
 // 网页内直接发送消息 (发消息前向量检索 Top-K -> 拼入 System Prompt -> 对话后按需自动归档)
 async function handleSendChatMessage() {
     const inputEl = document.getElementById('user-input');
@@ -3078,6 +3272,7 @@ async function handleSendChatMessage() {
 
     const filterTag = document.getElementById('chat-tag-filter').value;
     inputEl.value = '';
+    autoResizeUserInput();
 
     const history = getChatHistory();
     const userMsgId = `#${String(history.length + 1).padStart(2, '0')}`;
@@ -4075,12 +4270,47 @@ function bindEvents() {
         showToast('屏幕对话已清空', '长期记忆库完好保留在抽屉与 GitHub 中', 'info');
     });
 
+    const userInputEl = document.getElementById('user-input');
+    userInputEl.addEventListener('input', autoResizeUserInput);
+    window.addEventListener('resize', autoResizeUserInput);
     document.getElementById('btn-send-msg').addEventListener('click', handleSendChatMessage);
-    document.getElementById('user-input').addEventListener('keydown', e => {
+    userInputEl.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSendChatMessage();
         }
+    });
+
+    // 全屏信笺编辑弹窗
+    const fsEditorModal = document.getElementById('fullscreen-editor-modal');
+    const fsEditorInput = document.getElementById('fullscreen-editor-input');
+    const fsEditorCount = document.getElementById('fullscreen-editor-count');
+    const updateFsCount = () => {
+        fsEditorCount.textContent = `${fsEditorInput.value.length} 字`;
+    };
+    const closeFsEditor = (syncBack = true) => {
+        if (syncBack) {
+            userInputEl.value = fsEditorInput.value;
+            autoResizeUserInput();
+        }
+        fsEditorModal.classList.remove('open');
+    };
+    document.getElementById('btn-expand-input').addEventListener('click', () => {
+        document.getElementById('fullscreen-editor-branch').textContent = state.currentBranch;
+        fsEditorInput.value = userInputEl.value;
+        updateFsCount();
+        fsEditorModal.classList.add('open');
+        setTimeout(() => fsEditorInput.focus(), 40);
+    });
+    fsEditorInput.addEventListener('input', updateFsCount);
+    document.getElementById('btn-close-fullscreen-editor').addEventListener('click', () => closeFsEditor(true));
+    document.getElementById('btn-collapse-fullscreen-editor').addEventListener('click', () => closeFsEditor(true));
+    fsEditorModal.addEventListener('click', (e) => {
+        if (e.target === fsEditorModal) closeFsEditor(true);
+    });
+    document.getElementById('btn-fullscreen-send').addEventListener('click', () => {
+        closeFsEditor(true);
+        handleSendChatMessage();
     });
 }
 
