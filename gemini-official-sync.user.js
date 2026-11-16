@@ -421,8 +421,12 @@
         return (na && nb) ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
     }
 
+    function encodeGithubPath(path) {
+        return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
+    }
+
     async function githubGetFile(path) {
-        const res = await fetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/${path}?t=${Date.now()}`, {
+        const res = await fetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/${encodeGithubPath(path)}?t=${Date.now()}`, {
             headers: {
                 'Authorization': `Bearer ${state.githubPat.trim()}`,
                 'Accept': 'application/vnd.github+json'
@@ -442,7 +446,7 @@
         }
         const body = { message, content: utf8ToBase64(JSON.stringify(jsonData, null, 2)) };
         if (latestSha) body.sha = latestSha;
-        const res = await fetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/${path}`, {
+        const res = await fetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/${encodeGithubPath(path)}`, {
             method: 'PUT',
             headers: {
                 'Authorization': `Bearer ${state.githubPat.trim()}`,

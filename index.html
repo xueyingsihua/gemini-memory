@@ -1779,6 +1779,40 @@
     </div>
 </div>
 
+<!-- ================================================
+     🌿 分支隔间管理弹窗 (支持新建、自由改名、删除默认或旧隔间)
+     ================================================ -->
+<div class="modal-overlay" id="branch-manager-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <span class="modal-title">🌿 分支记忆隔间管理（物理隔离）</span>
+            <button class="btn-chuqing icon-only" id="btn-close-branch-manager">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">➕ 新建独立记忆隔间（支持中文/英文名）</label>
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="new-branch-input" class="chuqing-input" placeholder="例如：日常闲聊、现代线、古风线、工作笔记...">
+                    <button class="btn-chuqing primary" id="btn-confirm-add-branch" style="flex-shrink:0;">➕ 新建</button>
+                </div>
+                <span class="form-hint">每个隔间在 GitHub 中对应独立的 <code>branches/{隔间名}.json</code> 文件，不同隔间之间记忆 100% 物理隔离、绝不互通串戏。</span>
+            </div>
+
+            <hr style="border:none;border-top:1px dashed var(--color-border);margin:4px 0;">
+
+            <div class="form-group">
+                <label class="form-label">📂 现有隔间列表（可随时改名或删除默认隔间）</label>
+                <div id="branch-manager-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-chuqing primary" id="btn-done-branch-manager">完成</button>
+        </div>
+    </div>
+</div>
+
 <script>
 /* ============================================================================
    信笺 · 初晴 | Gemini 向量长期记忆库 (RAG) 核心逻辑
@@ -2022,10 +2056,14 @@ function updateGithubStatusUI(online, text) {
     label.textContent = text;
 }
 
+function encodeGithubPath(path) {
+    return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
+}
+
 async function githubGetFile(path) {
     const repo = state.config.githubRepo.trim();
     const pat = state.config.githubPat.trim();
-    const url = `https://api.github.com/repos/${repo}/contents/${path}?t=${Date.now()}`;
+    const url = `https://api.github.com/repos/${repo}/contents/${encodeGithubPath(path)}?t=${Date.now()}`;
     const res = await fetch(url, {
         headers: {
             'Authorization': `Bearer ${pat}`,
@@ -2048,7 +2086,7 @@ async function githubGetFile(path) {
 async function githubPutFile(path, jsonData, sha = null, commitMsg = 'Update memory archive via Chuqing RAG') {
     const repo = state.config.githubRepo.trim();
     const pat = state.config.githubPat.trim();
-    const url = `https://api.github.com/repos/${repo}/contents/${path}`;
+    const url = `https://api.github.com/repos/${repo}/contents/${encodeGithubPath(path)}`;
 
     // 如果未传 sha，先尝试获取最新 sha 防止 409 Conflict
     let latestSha = sha;
@@ -2100,6 +2138,31 @@ async function githubPutFile(path, jsonData, sha = null, commitMsg = 'Update mem
     }
     const result = await res.json();
     return result.content ? result.content.sha : null;
+}
+
+async function githubDeleteFile(path, sha = null, commitMsg = 'Remove branch file via Chuqing RAG') {
+    if (!isGithubConfigured()) return;
+    const repo = state.config.githubRepo.trim();
+    const pat = state.config.githubPat.trim();
+    let targetSha = sha;
+    if (!targetSha) {
+        const existing = await githubGetFile(path).catch(() => null);
+        if (!existing || !existing.sha) return;
+        targetSha = existing.sha;
+    }
+    const url = `https://api.github.com/repos/${repo}/contents/${encodeGithubPath(path)}`;
+    await fetch(url, {
+        method: 'DELETE',
+        headers: {
+            'Authorization': `Bearer ${pat}`,
+            'Accept': 'application/vnd.github+json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            message: commitMsg,
+            sha: targetSha
+        })
+    });
 }
 
 // 同步加载全局底座 global_profile.json
@@ -2780,27 +2843,162 @@ function bindEvents() {
         showToast('已切换分支隔间', `当前处于 [${state.currentBranch}] 独立记忆库`, 'info');
     });
 
-    // 新建分支
-    document.getElementById('btn-new-branch').addEventListener('click', async () => {
-        const name = prompt('请输入新分支隔间名称（建议英文/数字/下划线，如 work_notes 或 story_02）：');
-        if (!name || !name.trim()) return;
-        const cleanName = name.trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '_');
+    // 分支管理弹窗（支持新建、改名、删除默认或旧隔间）
+    const branchModal = document.getElementById('branch-manager-modal');
+    const closeBranchModal = () => branchModal.classList.remove('open');
+
+    async function saveGlobalProfileListToGithub(commitMsg) {
+        saveLocalState();
+        renderAllUI();
+        if (isGithubConfigured()) {
+            const newSha = await githubPutFile('global_profile.json', {
+                persona: state.globalProfile.persona,
+                customTags: state.globalProfile.customTags,
+                branchList: state.globalProfile.branchList,
+                updatedAt: new Date().toISOString()
+            }, state.globalProfile.sha, commitMsg);
+            state.globalProfile.sha = newSha;
+            saveLocalState();
+        }
+    }
+
+    function renderBranchManagerList() {
+        const listEl = document.getElementById('branch-manager-list');
+        listEl.innerHTML = '';
+        state.globalProfile.branchList.forEach(bName => {
+            const isCurrent = bName === state.currentBranch;
+            const count = state.branchCache[bName]?.slices?.length ?? 0;
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:var(--color-input);border:1px solid var(--color-border);border-radius:var(--radius-sm);';
+            row.innerHTML = `
+                <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+                    <span style="font-weight:700;color:var(--color-text-strong);word-break:break-all;">🌿 ${escapeHtml(bName)}</span>
+                    ${isCurrent ? '<span class="badge-count" style="background:rgba(var(--rgb-green),0.15);color:var(--base-green);">当前使用</span>' : ''}
+                    <span class="badge-count">${count} 条记忆</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+                    <button class="btn-chuqing btn-rename-branch" style="height:26px;padding:0 8px;font-size:12px;">✏️ 改名</button>
+                    <button class="btn-chuqing btn-delete-branch" style="height:26px;padding:0 8px;font-size:12px;color:var(--color-danger);">🗑️ 删除</button>
+                </div>
+            `;
+
+            // 改名逻辑
+            row.querySelector('.btn-rename-branch').addEventListener('click', async () => {
+                const rawNew = prompt(`将隔间「${bName}」重命名为（支持中文/英文）：`, bName);
+                if (!rawNew || !rawNew.trim()) return;
+                const newName = rawNew.trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '_');
+                if (newName === bName) return;
+                if (state.globalProfile.branchList.includes(newName)) {
+                    showToast('名字已存在', `已经有叫「${newName}」的隔间了`, 'warning');
+                    return;
+                }
+
+                showLoading('RENAMING BRANCH', `正在将隔间 [${bName}] 改名为 [${newName}] 并迁移数据...`);
+                try {
+                    // 确保先拿到旧分支数据
+                    if (isGithubConfigured() && !state.branchCache[bName]?.sha) {
+                        await loadBranchFromGithub(bName, false);
+                    }
+                    const oldData = state.branchCache[bName] || { slices: [], sha: null };
+                    state.branchCache[newName] = { slices: [...(oldData.slices || [])], sha: null };
+                    delete state.branchCache[bName];
+
+                    // 迁移本地聊天历史
+                    try {
+                        const allChat = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHAT_HISTORY) || '{}');
+                        if (allChat[bName]) {
+                            allChat[newName] = allChat[bName];
+                            delete allChat[bName];
+                            localStorage.setItem(STORAGE_KEYS.CHAT_HISTORY, JSON.stringify(allChat));
+                        }
+                    } catch (e) {}
+
+                    const idx = state.globalProfile.branchList.indexOf(bName);
+                    if (idx !== -1) state.globalProfile.branchList[idx] = newName;
+                    if (state.currentBranch === bName) state.currentBranch = newName;
+
+                    if (isGithubConfigured()) {
+                        const newSha = await githubPutFile(`branches/${newName}.json`, state.branchCache[newName].slices, null, `Rename branch ${bName} to ${newName}`);
+                        state.branchCache[newName].sha = newSha;
+                        await githubDeleteFile(`branches/${bName}.json`, oldData.sha, `Delete old branch ${bName}`);
+                    }
+                    await saveGlobalProfileListToGithub(`Rename branch ${bName} to ${newName}`);
+                    renderBranchManagerList();
+                    showToast('隔间改名成功', `「${bName}」已改为「${newName}」`, 'success');
+                } catch (err) {
+                    showToast('改名失败', err.message, 'error');
+                } finally {
+                    hideLoading();
+                }
+            });
+
+            // 删除逻辑
+            row.querySelector('.btn-delete-branch').addEventListener('click', async () => {
+                if (state.globalProfile.branchList.length <= 1) {
+                    showToast('无法删除', '至少需要保留 1 个记忆隔间（你可以点「✏️ 改名」把它改成你想要的名字）', 'warning');
+                    return;
+                }
+                if (!confirm(`确定要彻底删除隔间「${bName}」及其内部的记忆文件吗？此操作不可恢复。`)) return;
+
+                showLoading('DELETING BRANCH', `正在删除隔间 [${bName}]...`);
+                try {
+                    const oldSha = state.branchCache[bName]?.sha || null;
+                    delete state.branchCache[bName];
+                    state.globalProfile.branchList = state.globalProfile.branchList.filter(x => x !== bName);
+                    if (state.currentBranch === bName) {
+                        state.currentBranch = state.globalProfile.branchList[0];
+                    }
+                    if (isGithubConfigured()) {
+                        await githubDeleteFile(`branches/${bName}.json`, oldSha, `Delete branch ${bName}`).catch(() => {});
+                    }
+                    await saveGlobalProfileListToGithub(`Delete branch ${bName}`);
+                    await loadBranchFromGithub(state.currentBranch, false);
+                    renderBranchManagerList();
+                    showToast('隔间已删除', `已移除「${bName}」`, 'info');
+                } catch (err) {
+                    showToast('删除失败', err.message, 'error');
+                } finally {
+                    hideLoading();
+                }
+            });
+
+            listEl.appendChild(row);
+        });
+    }
+
+    const openBranchModal = () => {
+        renderBranchManagerList();
+        branchModal.classList.add('open');
+    };
+
+    document.getElementById('btn-new-branch').addEventListener('click', openBranchModal);
+    document.getElementById('drawer-branch-label').style.cursor = 'pointer';
+    document.getElementById('drawer-branch-label').title = '点击管理/重命名分支隔间';
+    document.getElementById('drawer-branch-label').addEventListener('click', openBranchModal);
+    document.getElementById('btn-close-branch-manager').addEventListener('click', closeBranchModal);
+    document.getElementById('btn-done-branch-manager').addEventListener('click', closeBranchModal);
+
+    const handleConfirmAddBranch = async () => {
+        const inputEl = document.getElementById('new-branch-input');
+        const raw = inputEl.value.trim();
+        if (!raw) {
+            showToast('请输入隔间名', '例如：现代日常、古风线、工作助手', 'warning');
+            return;
+        }
+        const cleanName = raw.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '_');
         if (!state.globalProfile.branchList.includes(cleanName)) {
             state.globalProfile.branchList.push(cleanName);
         }
         state.currentBranch = cleanName;
-        saveLocalState();
-        if (isGithubConfigured()) {
-            try {
-                await githubPutFile('global_profile.json', {
-                    persona: state.globalProfile.persona,
-                    customTags: state.globalProfile.customTags,
-                    branchList: state.globalProfile.branchList,
-                    updatedAt: new Date().toISOString()
-                }, state.globalProfile.sha, `Add branch ${cleanName}`);
-            } catch (e) {}
-        }
+        inputEl.value = '';
+        await saveGlobalProfileListToGithub(`Add branch ${cleanName}`);
         await loadBranchFromGithub(cleanName, true);
+        renderBranchManagerList();
+        showToast('新隔间已创建', `已切换至独立隔间「${cleanName}」`, 'success');
+    };
+    document.getElementById('btn-confirm-add-branch').addEventListener('click', handleConfirmAddBranch);
+    document.getElementById('new-branch-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter') handleConfirmAddBranch();
     });
 
     // 手动从 GitHub 刷新当前分支
