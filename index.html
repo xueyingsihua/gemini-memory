@@ -1,0 +1,3119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="初晴·记忆库">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#eee6de">
+    <title>信笺 · 初晴 | Gemini 向量长期记忆库 (RAG)</title>
+    <!-- Google Fonts & FontAwesome -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Lato:wght@400;700;900&family=Playfair+Display:wght@400;500;600;700;900&family=Noto+Serif+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <style>
+        /* ================================================
+           SILLYTAVERN 信笺 · 初晴 (Web App 移植与增强版)
+           原作者：夕颜 | 向量记忆库 RAG 定制版
+           ================================================ */
+
+        :root {
+            /* --- 1. 基础色盘 --- */
+            --base-brown-light: #8c7b70;
+            --rgb-brown-light: 140, 123, 112;
+            --base-brown-dark: #5d4e46;
+            --rgb-brown-dark: 93, 78, 70;
+
+            --base-blue-grey: #8e9eab;
+            --rgb-blue-grey: 142, 158, 171;
+            --base-blue-dark: #5d6e7f;
+            --base-bot-bg: #f4f6f8;
+
+            --base-red: #d9534f;
+            --rgb-red: 217, 83, 79;
+            --base-red-dark: #c9302c;
+            --base-red-deep: #7a1616;
+            --base-green: #4caf50;
+            --rgb-green: 76, 175, 80;
+            --base-yellow: #ff9800;
+            --base-yellow-dark: #f57c00;
+            --base-terracotta: #b46450;
+            --rgb-terracotta: 180, 100, 80;
+
+            --base-white: #ffffff;
+            --rgb-white: 255, 255, 255;
+            --base-black: #000000;
+            --rgb-black: 0, 0, 0;
+
+            --base-bg-paper: #eee6de;
+            --rgb-bg-paper: 238, 230, 222;
+            --base-bg-light: #fdfbf7;
+            --rgb-bg-light: 253, 251, 247;
+            --base-bg-input: #faf9f6;
+
+            --base-grey-light: #eeeeee;
+            --base-grey-mid: #999999;
+            --base-grey-deep: #2b2b2b;
+            --base-text-main: #4a3e38;
+            --rgb-text-main: 74, 62, 56;
+
+            /* --- 2. 语义映射 --- */
+            --color-accent: var(--base-brown-light);
+            --rgb-accent: var(--rgb-brown-light);
+            --color-accent-hover: var(--base-brown-dark);
+
+            --color-text: var(--base-grey-deep);
+            --color-text-dark: var(--base-text-main);
+            --color-text-strong: var(--base-brown-dark);
+            --color-text-light: #666666;
+            --color-text-faded: #888888;
+            --color-text-disabled: #a0948d;
+
+            --color-bot-main: var(--base-blue-grey);
+            --rgb-bot-main: var(--rgb-blue-grey);
+            --color-bot-hover: var(--base-blue-dark);
+            --color-bot-text: #556677;
+
+            --color-danger: var(--base-red);
+            --rgb-danger: var(--rgb-red);
+            --color-danger-hover: var(--base-red-dark);
+            --color-danger-bg: #fff5f5;
+            --color-success: var(--base-green);
+            --rgb-success: var(--rgb-green);
+
+            --color-bg-app: var(--base-bg-paper);
+            --rgb-bg-app: var(--rgb-bg-paper);
+            --color-paper: rgb(var(--rgb-white));
+            --rgb-paper: var(--rgb-white);
+            --color-input: var(--base-bg-input);
+            --rgb-input: 250, 249, 246;
+
+            --color-border: #bfaea0;
+            --color-border-bot: var(--color-bot-main);
+
+            /* --- 3. 组件变量 --- */
+            --shadow-xs: 0 1px 2px rgba(var(--rgb-black), 0.05);
+            --shadow-sm: 0 2px 5px rgba(var(--rgb-black), 0.05);
+            --shadow-md: 3px 5px 15px rgba(var(--rgb-black), 0.08);
+            --shadow-lg: 0 10px 30px rgba(var(--rgb-black), 0.12);
+
+            --shadow-hover-sm: 0 2px 5px rgba(var(--rgb-accent), 0.15);
+            --shadow-hover-md: 0 4px 10px rgba(var(--rgb-accent), 0.2);
+            --shadow-hover-lg: 0 8px 20px rgba(var(--rgb-accent), 0.25);
+            --shadow-selected: 0 2px 10px rgba(var(--rgb-bot-main), 0.15);
+
+            --shadow-inset-xs: inset 0 1px 2px rgba(var(--rgb-black), 0.02);
+            --shadow-inset-sm: inset 0 1px 3px rgba(var(--rgb-black), 0.03);
+            --shadow-inset-focus: inset 0 1px 3px rgba(var(--rgb-accent), 0.15);
+
+            --shadow-card: var(--shadow-md);
+            --shadow-input: var(--shadow-inset-sm);
+            --shadow-panel: 0 -4px 20px rgba(var(--rgb-black), 0.05);
+
+            --color-cot-bg: rgba(var(--rgb-bot-main), 0.1);
+            --color-cot-border: var(--color-bot-main);
+            --color-cot-text: #6a7b8c;
+
+            /* --- 4. 排版與圆角 --- */
+            --font-serif: 'Playfair Display', 'Noto Serif SC', 'Source Han Serif SC', 'Microsoft YaHei', 'SimSun', serif;
+            --font-sans: 'Lato', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'Courier Prime', 'Consolas', monospace;
+
+            --space-md: 15px;
+            --space-lg: 26px;
+
+            --radius-xs: 4px;
+            --radius-sm: 6px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+            --radius-full: 50px;
+
+            /* --- 5. 质感与动效 --- */
+            --blur-glass: 10px;
+            --blur-popup: 5px;
+            --duration-fast: 0.2s;
+            --duration-normal: 0.3s;
+            --duration-slow: 0.5s;
+            --duration-pulse: 2s;
+            --duration-spin: 3s;
+            --ease-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            --ease-smooth: cubic-bezier(0.4, 0.0, 0.2, 1);
+            --ease-soft: cubic-bezier(0.25, 0.8, 0.25, 1);
+            --transition-base: all var(--duration-fast) ease;
+            --transition-bounce: all var(--duration-normal) var(--ease-bounce);
+        }
+
+        /* ================================================
+           关键帧动画 (原汁原味复用初晴)
+           ================================================ */
+        @keyframes pulse-soft {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 1; }
+        }
+
+        @keyframes diamond-spin {
+            0% { transform: translateY(-50%) rotate(0deg); }
+            100% { transform: translateY(-50%) rotate(360deg); }
+        }
+
+        @keyframes checkbox-pop {
+            0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+
+        @keyframes slide-down-fade {
+            0% { opacity: 0; transform: translateY(-10px); }
+            100% { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes spread-once {
+            0% { letter-spacing: 1px; opacity: 0; transform: scale(0.95); }
+            100% { letter-spacing: 6px; opacity: 1; transform: scale(1); }
+        }
+
+        @keyframes text-flash {
+            0% { opacity: 1; text-shadow: 0 0 0 transparent; }
+            100% { opacity: 0.5; text-shadow: 0 0 8px rgba(var(--rgb-text-main), 0.2); }
+        }
+
+        @keyframes box-flash {
+            0% { box-shadow: 0 0 0 1.5px rgba(var(--rgb-text-main), 1); }
+            100% { box-shadow: 0 0 0 1.5px rgba(var(--rgb-text-main), 0.3); }
+        }
+
+        /* ================================================
+           全局滚动条 & 复选框 (𝔖 印章)
+           ================================================ */
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-color: var(--color-bg-app);
+            color: var(--color-text-dark);
+            font-family: var(--font-sans);
+            overflow: hidden;
+        }
+
+        ::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+            background-image: linear-gradient(to bottom,
+                rgba(var(--rgb-accent), 0.3) 0%,
+                rgba(var(--rgb-accent), 0.3) 50%,
+                transparent 50%,
+                transparent 100%);
+            background-size: 1px 10px;
+            background-repeat: repeat-y;
+            background-position: center center;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background-color: transparent;
+            min-height: 20px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%238c7b70'%3E%3Cpath d='M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-size: 13px 13px;
+            background-position: center center;
+            transition: var(--transition-base);
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background-size: 14px 14px;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%235d4e46'%3E%3Cpath d='M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z'/%3E%3C/svg%3E");
+        }
+
+        /* 复选框 𝔖 印章动效 */
+        input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            position: relative;
+            width: 18px;
+            height: 18px;
+            border-radius: var(--radius-xs);
+            background-color: var(--base-bg-light);
+            border: 1px solid var(--color-border);
+            outline: none;
+            vertical-align: middle;
+            cursor: pointer;
+            overflow: hidden;
+            transition: all var(--duration-fast) ease;
+            margin: 0;
+            flex-shrink: 0;
+        }
+
+        input[type="checkbox"]:hover {
+            border-color: var(--color-accent);
+            background-color: var(--color-paper);
+        }
+
+        input[type="checkbox"]:checked {
+            border-color: var(--color-accent);
+            box-shadow: var(--shadow-inset-focus);
+        }
+
+        input[type="checkbox"]:checked::after {
+            content: '𝔖';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 13px;
+            line-height: 1;
+            color: var(--color-accent);
+            animation: checkbox-pop var(--duration-fast) var(--ease-bounce);
+        }
+
+        /* ================================================
+           顶部悬浮导航岛 (Top Floating Island)
+           ================================================ */
+        .app-shell {
+            display: flex;
+            flex-direction: column;
+            height: 100dvh;
+            max-width: 960px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .top-nav-island {
+            margin: 14px 20px 0 20px;
+            padding: 10px 16px;
+            background: rgba(var(--rgb-bg-light), 0.92);
+            backdrop-filter: blur(var(--blur-glass));
+            -webkit-backdrop-filter: blur(var(--blur-glass));
+            border: 1px solid rgba(var(--rgb-brown-light), 0.25);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            z-index: 100;
+            transition: var(--transition-base);
+        }
+
+        .brand-area {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .brand-title {
+            font-family: var(--font-serif);
+            font-weight: 700;
+            font-size: 17px;
+            color: var(--color-text-strong);
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .brand-sub {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--color-text-faded);
+            padding: 2px 7px;
+            background: rgba(var(--rgb-brown-light), 0.1);
+            border-radius: var(--radius-full);
+            white-space: nowrap;
+        }
+
+        .nav-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: nowrap;
+        }
+
+        /* 分支选择下拉框 */
+        .branch-select-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .branch-select {
+            appearance: none;
+            -webkit-appearance: none;
+            height: 34px;
+            padding: 0 28px 0 12px;
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--color-text-strong);
+            background-color: var(--color-input);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-inset-xs);
+            cursor: pointer;
+            transition: var(--transition-base);
+            max-width: 160px;
+            text-overflow: ellipsis;
+        }
+
+        .branch-select:hover, .branch-select:focus {
+            border-color: var(--color-accent-hover);
+            box-shadow: var(--shadow-hover-sm);
+            outline: none;
+        }
+
+        .branch-select-wrap::after {
+            content: "▾";
+            position: absolute;
+            right: 10px;
+            pointer-events: none;
+            color: var(--color-accent);
+            font-size: 12px;
+        }
+
+        /* 通用初晴按钮 */
+        .btn-chuqing {
+            height: 34px;
+            padding: 0 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid rgba(var(--rgb-brown-light), 0.35);
+            background: var(--base-bg-light);
+            color: var(--color-text-strong);
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: var(--transition-base);
+            box-shadow: var(--shadow-xs);
+            white-space: nowrap;
+        }
+
+        .btn-chuqing:hover {
+            border-color: var(--color-accent);
+            background: var(--color-paper);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-hover-sm);
+        }
+
+        .btn-chuqing:active {
+            transform: translateY(0);
+        }
+
+        .btn-chuqing.primary {
+            background: var(--color-accent);
+            color: var(--base-white);
+            border-color: var(--color-accent);
+        }
+
+        .btn-chuqing.primary:hover {
+            background: var(--color-accent-hover);
+            border-color: var(--color-accent-hover);
+        }
+
+        .btn-chuqing.bot-style {
+            background: rgba(var(--rgb-bot-main), 0.14);
+            color: var(--color-bot-text);
+            border-color: rgba(var(--rgb-bot-main), 0.45);
+        }
+
+        .btn-chuqing.bot-style:hover {
+            background: var(--color-bot-main);
+            color: var(--base-white);
+        }
+
+        .btn-chuqing.icon-only {
+            width: 34px;
+            padding: 0;
+        }
+
+        .badge-count {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            padding: 1px 6px;
+            border-radius: var(--radius-full);
+            background: rgba(var(--rgb-brown-light), 0.15);
+            color: var(--color-text-strong);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        /* ================================================
+           主视图切换栏 (官方App伴侣工作台 vs 信笺直聊)
+           ================================================ */
+        .mode-bar {
+            margin: 10px 20px 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .mode-tabs {
+            display: inline-flex;
+            background: rgba(var(--rgb-brown-light), 0.12);
+            padding: 3px;
+            border-radius: var(--radius-full);
+            border: 1px solid rgba(var(--rgb-brown-light), 0.2);
+        }
+
+        .mode-tab {
+            border: none;
+            background: transparent;
+            padding: 5px 14px;
+            border-radius: var(--radius-full);
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--color-text-light);
+            cursor: pointer;
+            transition: var(--transition-base);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .mode-tab.active {
+            background: var(--base-bg-light);
+            color: var(--color-text-strong);
+            box-shadow: var(--shadow-xs);
+        }
+
+        .sync-status {
+            font-family: var(--font-mono);
+            font-size: 11.5px;
+            color: var(--color-text-faded);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--base-grey-mid);
+        }
+
+        .status-dot.online {
+            background: var(--base-green);
+            box-shadow: 0 0 6px rgba(var(--rgb-green), 0.5);
+        }
+
+        /* ================================================
+           伴侣快捷工作台 (官方 Gemini App 复制入库 & 唤醒打包)
+           ================================================ */
+        #companion-panel {
+            flex: 1;
+            overflow-y: auto;
+            margin: 12px 20px 14px 20px;
+            background: var(--base-bg-light);
+            border-radius: var(--radius-md);
+            border-left: 4px solid var(--color-accent);
+            box-shadow: var(--shadow-card);
+            padding: 18px 22px;
+            display: none;
+            animation: slide-down-fade var(--duration-normal) ease-out;
+        }
+
+        #companion-panel.active {
+            display: block;
+        }
+
+        .companion-grid {
+            display: grid;
+            grid-template-columns: 1.15fr 1fr;
+            gap: 20px;
+        }
+
+        .companion-box {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .companion-box-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            border-bottom: 1px solid rgba(var(--rgb-brown-light), 0.25);
+            padding-bottom: 8px;
+        }
+
+        .companion-box-title {
+            font-family: var(--font-serif);
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--color-text-strong);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+
+        .chuqing-textarea, .chuqing-input {
+            width: 100%;
+            background: var(--color-input);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            font-family: var(--font-sans);
+            font-size: 13.5px;
+            color: var(--color-text-dark);
+            line-height: 1.6;
+            box-shadow: var(--shadow-input);
+            transition: var(--transition-base);
+            resize: vertical;
+        }
+
+        .chuqing-textarea:focus, .chuqing-input:focus {
+            outline: none;
+            border-color: var(--color-accent);
+            box-shadow: var(--shadow-inset-focus);
+            background: var(--color-paper);
+        }
+
+        /* 标签池选择胶囊 (带 𝔖 印章或高亮) */
+        .tag-picker-bar {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+            background: rgba(var(--rgb-brown-light), 0.08);
+            border: 1px solid rgba(var(--rgb-brown-light), 0.25);
+            color: var(--color-text-strong);
+            cursor: pointer;
+            user-select: none;
+            transition: var(--transition-base);
+        }
+
+        .tag-chip:hover {
+            border-color: var(--color-accent);
+            background: rgba(var(--rgb-brown-light), 0.14);
+        }
+
+        .tag-chip.selected {
+            background: rgba(var(--rgb-brown-light), 0.22);
+            border-color: var(--color-accent-hover);
+            font-weight: 700;
+        }
+
+        .tag-chip.selected::before {
+            content: '𝔖';
+            color: var(--color-accent-hover);
+            font-size: 11px;
+        }
+
+        /* ================================================
+           一、消息界面 (#chat) - 1:1 还原初晴信笺卡片
+           ================================================ */
+        #chat {
+            flex: 1;
+            overflow-y: auto;
+            padding: 18px 20px 30px 20px;
+            overflow-anchor: auto;
+        }
+
+        #chat > .mes:last-child {
+            margin-bottom: 0;
+        }
+
+        #chat .mes {
+            position: relative;
+            background-color: var(--base-bg-light);
+            border: none;
+            border-radius: var(--radius-sm);
+            margin-bottom: var(--space-lg);
+            padding: 26px 34px 52px 34px;
+            box-shadow: var(--shadow-card);
+            transition: background-color var(--duration-normal) ease;
+        }
+
+        #chat .mes[is_user="true"] {
+            border-left: 4px solid var(--color-border);
+        }
+
+        #chat .mes[is_user="false"] {
+            border-left: 4px solid var(--color-border-bot);
+        }
+
+        /* 角色名与分割线 */
+        #chat .mes .ch_name {
+            font-family: var(--font-serif);
+            font-size: 19px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid;
+            width: 100%;
+            padding-bottom: 11px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        #chat .mes[is_user="true"] .ch_name {
+            color: var(--color-accent);
+            border-color: rgba(var(--rgb-accent), 0.4);
+        }
+
+        #chat .mes[is_user="false"] .ch_name {
+            color: var(--color-bot-text);
+            border-color: rgba(var(--rgb-bot-main), 0.4);
+        }
+
+        /* 时间戳与装饰图标 */
+        #chat .timestamp {
+            font-family: var(--font-sans);
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--color-text-faded);
+        }
+
+        #chat .timestamp::after {
+            font-family: var(--font-sans);
+            font-size: 14px;
+            margin-left: 5px;
+            display: inline-block;
+            vertical-align: middle;
+            transform: translateY(-1px);
+            line-height: 1;
+        }
+
+        #chat .mes[is_user="true"] .timestamp::after {
+            content: " ✎";
+            color: var(--color-accent);
+        }
+
+        #chat .mes[is_user="false"] .timestamp::after {
+            content: " ✦";
+            color: var(--color-border-bot);
+            animation: pulse-soft var(--duration-pulse) infinite ease-in-out;
+            text-shadow: 0 0 5px rgba(var(--rgb-bot-main), 0.4);
+        }
+
+        /* 记忆召回小胶囊 (复用 .mes_reasoning_header) */
+        #chat .mes_reasoning_header {
+            background-color: var(--color-cot-bg);
+            border: 1px solid rgba(var(--rgb-bot-main), 0.3);
+            border-radius: var(--radius-full);
+            padding: 6px 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: fit-content;
+            max-width: 100%;
+            margin-bottom: 12px;
+            cursor: pointer;
+            min-height: 30px;
+            transition: all var(--duration-normal) var(--ease-soft);
+            user-select: none;
+        }
+
+        #chat .mes_reasoning_header:hover {
+            background-color: rgba(var(--rgb-bot-main), 0.18);
+            border-color: var(--color-cot-border);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(var(--rgb-bot-main), 0.25);
+        }
+
+        #chat .mes_reasoning_header_title {
+            font-family: var(--font-mono);
+            font-size: 12.5px;
+            color: var(--color-cot-text);
+            font-weight: 700;
+            line-height: 1;
+            margin: 0 6px 0 0;
+            padding-left: 18px;
+            position: relative;
+            white-space: nowrap;
+        }
+
+        #chat .mes_reasoning_header_title::before {
+            content: "◈";
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 11px;
+            color: var(--color-cot-border);
+            transition: all var(--duration-slow) ease;
+        }
+
+        #chat .mes_reasoning_header:hover .mes_reasoning_header_title::before {
+            color: var(--color-bot-hover);
+            animation: diamond-spin var(--duration-spin) linear infinite;
+        }
+
+        #chat .mes_reasoning_arrow {
+            font-size: 11px;
+            color: var(--color-cot-border);
+            transition: transform var(--duration-normal) var(--ease-bounce);
+        }
+
+        #chat .mes_reasoning_header.open .mes_reasoning_arrow {
+            transform: rotate(180deg);
+        }
+
+        /* 展开后的记忆召回详情列表 */
+        #chat .mes_reasoning_content {
+            display: none;
+            background-color: rgba(var(--rgb-white), 0.55);
+            border: 1px dashed var(--color-cot-border);
+            border-left: 3px solid var(--color-cot-border);
+            border-radius: var(--radius-sm);
+            margin-bottom: 14px;
+            padding: 12px 16px;
+            font-family: var(--font-mono);
+            font-size: 12.5px;
+            color: var(--color-text-light);
+            animation: slide-down-fade var(--duration-normal) ease-out forwards;
+        }
+
+        #chat .mes_reasoning_content.open {
+            display: block;
+        }
+
+        .recall-slice-item {
+            padding: 8px 0;
+            border-bottom: 1px dashed rgba(var(--rgb-bot-main), 0.25);
+        }
+
+        .recall-slice-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .recall-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 4px;
+            font-size: 11.5px;
+            color: var(--color-bot-text);
+            font-weight: 700;
+        }
+
+        .score-pill {
+            background: rgba(var(--rgb-bot-main), 0.2);
+            padding: 1px 7px;
+            border-radius: var(--radius-full);
+            font-family: var(--font-mono);
+        }
+
+        /* 消息正文与底部分割虚线 */
+        #chat .mes_text {
+            line-height: 1.85;
+            font-size: 15px;
+            color: var(--color-text-dark);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        #chat .mes_text::after {
+            content: "";
+            display: block;
+            margin-top: 28px;
+        }
+
+        #chat .mes[is_user="true"] .mes_text::after {
+            border-top: 1px dashed rgba(var(--rgb-accent), 0.35);
+        }
+
+        #chat .mes[is_user="false"] .mes_text::after {
+            border-top: 1px dashed rgba(var(--rgb-bot-main), 0.35);
+        }
+
+        /* 消息底部文件编号装饰 */
+        #chat .mes::after {
+            position: absolute;
+            bottom: 22px;
+            right: 34px;
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        #chat .mes[is_user="false"]::after {
+            content: "FILE " attr(mesid) " ✦ ARCHIVE CLASSIFIED";
+            color: var(--color-bot-main);
+        }
+
+        #chat .mes[is_user="true"]::after {
+            content: "LOG " attr(mesid) " ❖ USER RECORD";
+            color: var(--color-accent);
+            opacity: 0.75;
+        }
+
+        /* 卡片左下角快捷动作 */
+        .mes-card-actions {
+            position: absolute;
+            bottom: 18px;
+            left: 34px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .mes-action-link {
+            border: none;
+            background: transparent;
+            padding: 2px 6px;
+            font-family: var(--font-mono);
+            font-size: 11.5px;
+            color: var(--color-text-faded);
+            cursor: pointer;
+            transition: var(--transition-base);
+            border-radius: var(--radius-xs);
+        }
+
+        .mes-action-link:hover {
+            color: var(--color-text-strong);
+            background: rgba(var(--rgb-brown-light), 0.12);
+        }
+
+        /* ================================================
+           底部输入控制面板 (Bottom Input Dock)
+           ================================================ */
+        .bottom-dock {
+            margin: 0 20px 14px 20px;
+            padding: 12px 16px;
+            background: rgba(var(--rgb-bg-light), 0.95);
+            backdrop-filter: blur(var(--blur-glass));
+            border: 1px solid rgba(var(--rgb-brown-light), 0.25);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .dock-toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            color: var(--color-text-light);
+        }
+
+        .dock-toolbar-left, .dock-toolbar-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        #chat-tag-filter {
+            height: 26px;
+            padding: 0 8px;
+            font-size: 12px !important;
+            width: auto;
+            max-width: 135px;
+            text-overflow: ellipsis;
+        }
+
+        .dock-input-row {
+            display: flex;
+            align-items: flex-end;
+            gap: 10px;
+        }
+
+        #user-input {
+            flex: 1;
+            min-height: 42px;
+            max-height: 140px;
+            resize: none;
+            padding: 9px 12px;
+        }
+
+        /* ================================================
+           记忆管理抽屉 (Memory Drawer)
+           ================================================ */
+        .drawer-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(var(--rgb-black), 0.28);
+            backdrop-filter: blur(3px);
+            z-index: 900;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity var(--duration-normal) ease;
+        }
+
+        .drawer-backdrop.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .memory-drawer {
+            position: fixed;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            width: 480px;
+            max-width: 100vw;
+            background: var(--base-bg-paper);
+            box-shadow: var(--shadow-lg);
+            z-index: 950;
+            transform: translateX(102%);
+            transition: transform var(--duration-normal) var(--ease-smooth);
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid var(--color-border);
+        }
+
+        .memory-drawer.open {
+            transform: translateX(0);
+        }
+
+        .drawer-header {
+            padding: 18px 22px;
+            background: var(--base-bg-light);
+            border-bottom: 1px solid rgba(var(--rgb-brown-light), 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .drawer-title {
+            font-family: var(--font-serif);
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--color-text-strong);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .drawer-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .memory-slice-card {
+            background: var(--base-bg-light);
+            border-radius: var(--radius-sm);
+            border-left: 3px solid var(--color-accent);
+            padding: 14px 16px;
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: var(--transition-base);
+        }
+
+        .memory-slice-card:hover {
+            box-shadow: var(--shadow-md);
+            transform: translateY(-1px);
+        }
+
+        .slice-card-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 11.5px;
+            color: var(--color-text-faded);
+        }
+
+        .slice-card-text {
+            font-size: 14px;
+            line-height: 1.65;
+            color: var(--color-text-dark);
+            white-space: pre-wrap;
+        }
+
+        .slice-card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+            border-top: 1px dashed rgba(var(--rgb-brown-light), 0.25);
+            padding-top: 8px;
+        }
+
+        .slice-tags {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .slice-tag-badge {
+            font-size: 11px;
+            padding: 1px 8px;
+            border-radius: var(--radius-full);
+            background: rgba(var(--rgb-brown-light), 0.12);
+            color: var(--color-text-strong);
+        }
+
+        /* ================================================
+           通用弹窗 (配置弹窗 / 编辑弹窗)
+           ================================================ */
+        .modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(var(--rgb-black), 0.35);
+            backdrop-filter: blur(var(--blur-popup));
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+
+        .modal-overlay.open {
+            display: flex;
+        }
+
+        .modal-card {
+            background: var(--base-bg-light);
+            border: 1px solid var(--color-border);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-lg);
+            width: 100%;
+            max-width: 560px;
+            max-height: 88vh;
+            display: flex;
+            flex-direction: column;
+            animation: slide-down-fade var(--duration-normal) ease-out;
+        }
+
+        .modal-header {
+            padding: 16px 22px;
+            border-bottom: 1px solid rgba(var(--rgb-brown-light), 0.25);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-title {
+            font-family: var(--font-serif);
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--color-text-strong);
+        }
+
+        .modal-body {
+            padding: 18px 22px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .form-grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .form-label {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--color-text-strong);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .form-hint {
+            font-size: 11.5px;
+            color: var(--color-text-faded);
+            line-height: 1.4;
+        }
+
+        .modal-footer {
+            padding: 14px 22px;
+            border-top: 1px solid rgba(var(--rgb-brown-light), 0.2);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* ================================================
+           10. 顶部消息弹窗 (Toast) - 1:1 电影票打孔遮罩风格
+           ================================================ */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            pointer-events: none;
+        }
+
+        #toast-container > .toast {
+            pointer-events: auto;
+            display: block;
+            position: relative;
+            width: 340px;
+            padding: 12px 14px 14px 65px;
+            background-color: var(--base-bg-light);
+            border: none;
+            border-radius: var(--radius-sm);
+            box-shadow: var(--shadow-md);
+            font-family: var(--font-sans);
+            color: var(--color-text-strong);
+            opacity: 0.98;
+            transition: transform var(--duration-fast) ease, opacity var(--duration-normal) ease;
+            animation: slide-down-fade var(--duration-normal) ease-out;
+
+            /* 电影票上下半圆打孔遮罩 */
+            -webkit-mask-image:
+                radial-gradient(circle at 50px 0, transparent 6px, black 6.5px),
+                radial-gradient(circle at 50px 100%, transparent 6px, black 6.5px),
+                linear-gradient(black, black);
+            mask-image:
+                radial-gradient(circle at 50px 0, transparent 6px, black 6.5px),
+                radial-gradient(circle at 50px 100%, transparent 6px, black 6.5px),
+                linear-gradient(black, black);
+            -webkit-mask-composite: destination-out, destination-out, source-over;
+            mask-composite: exclude;
+        }
+
+        #toast-container > .toast::before {
+            content: "\f02b";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            color: rgba(var(--rgb-white), 0.95);
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-right: 2px dashed rgba(var(--rgb-white), 0.4);
+            z-index: 1;
+        }
+
+        #toast-container > .toast::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 50px;
+            border: 1px dashed rgba(var(--rgb-brown-dark), 0.5);
+            border-left: none;
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        #toast-container > .toast .toast-title {
+            margin: 2px 0 4px 0;
+            font-size: 14.5px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        #toast-container > .toast .toast-message {
+            margin: 0;
+            font-size: 12.5px;
+            opacity: 0.85;
+            line-height: 1.4;
+        }
+
+        #toast-container > .toast-success::before {
+            background-color: var(--base-green);
+            content: "\f00c";
+        }
+        #toast-container > .toast-success .toast-title { color: var(--base-green); }
+
+        #toast-container > .toast-error::before {
+            background-color: var(--base-red);
+            content: "\f071";
+        }
+        #toast-container > .toast-error .toast-title { color: var(--base-red); }
+
+        #toast-container > .toast-warning::before {
+            background-color: var(--base-yellow);
+            content: "\f12a";
+        }
+        #toast-container > .toast-warning .toast-title { color: var(--base-yellow-dark); }
+
+        #toast-container > .toast-info::before {
+            background-color: var(--base-blue-dark);
+            content: "\f05a";
+        }
+        #toast-container > .toast-info .toast-title { color: var(--base-blue-dark); }
+
+        #toast-container > .toast:hover {
+            transform: translateY(-3px) rotate(0.5deg);
+            box-shadow: var(--shadow-hover-lg);
+            cursor: pointer;
+        }
+
+        /* ================================================
+           11. 加载动画 (LOADING SCENE 线框与文字呼吸散开)
+           ================================================ */
+        #loading-scene-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(var(--rgb-bg-paper), 0.65);
+            backdrop-filter: blur(3px);
+            z-index: 99998;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        #loading-scene-backdrop.active {
+            display: flex;
+        }
+
+        .loading-scene-box {
+            min-width: 260px;
+            height: 70px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(var(--rgb-bg-light), 0.9);
+            box-shadow: 0 0 0 1.5px var(--color-text-dark);
+            animation: box-flash var(--duration-pulse) infinite alternate;
+            padding: 0 24px;
+        }
+
+        .loading-scene-box::after {
+            content: attr(data-text);
+            font-family: var(--font-serif);
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--color-text-dark);
+            text-transform: uppercase;
+            opacity: 0;
+            letter-spacing: 1px;
+            animation:
+                spread-once var(--duration-slow) var(--ease-soft) forwards,
+                text-flash 1.5s ease-in-out infinite alternate;
+        }
+
+        .loading-subtext {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            color: var(--color-text-strong);
+        }
+
+        /* ================================================
+           移动端响应式适配 (PWA 全屏体验)
+           ================================================ */
+        @media (max-width: 768px) {
+            .top-nav-island {
+                margin: 0;
+                border-radius: 0 0 var(--radius-md) var(--radius-md);
+                border-top: none;
+                border-left: none;
+                border-right: none;
+                padding: calc(10px + env(safe-area-inset-top, 0px)) 12px 10px 12px;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+
+            .brand-sub {
+                display: none;
+            }
+
+            .nav-controls {
+                gap: 6px;
+            }
+
+            .branch-select {
+                max-width: 140px;
+                font-size: 14px !important;
+            }
+
+            .nav-btn-text {
+                display: none;
+            }
+
+            .mode-bar {
+                margin: 8px 12px 0 12px;
+            }
+
+            #companion-panel {
+                margin: 8px 12px calc(10px + env(safe-area-inset-bottom, 0px)) 12px;
+                padding: 14px;
+            }
+
+            .companion-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+
+            #chat {
+                padding: 12px 12px 20px 12px;
+            }
+
+            #chat .mes {
+                padding: 20px 18px 68px 18px;
+                margin-bottom: 18px;
+            }
+
+            #chat .mes::after {
+                right: 18px;
+                bottom: 14px;
+                font-size: 10px;
+            }
+
+            .mes-card-actions {
+                left: 18px;
+                bottom: 36px;
+            }
+
+            .bottom-dock {
+                margin: 0 10px calc(10px + env(safe-area-inset-bottom, 0px)) 10px;
+                padding: 10px 12px;
+            }
+
+            .dock-toolbar {
+                flex-wrap: wrap;
+                gap: 6px 8px;
+                overflow: visible;
+            }
+
+            .dock-toolbar-left,
+            .dock-toolbar-right {
+                width: 100%;
+                justify-content: space-between;
+                flex-wrap: nowrap;
+                gap: 6px;
+            }
+
+            .toolbar-sep {
+                display: none;
+            }
+
+            #chat-tag-filter {
+                max-width: 120px;
+                font-size: 12px !important;
+            }
+
+            .form-grid-2 {
+                grid-template-columns: 1fr;
+            }
+
+            input:not([type="checkbox"]),
+            textarea,
+            .chuqing-input,
+            .chuqing-textarea {
+                font-size: 16px !important;
+            }
+
+            #toast-container {
+                left: 50%;
+                right: auto;
+                transform: translateX(-50%);
+            }
+
+            #toast-container > .toast {
+                width: calc(100vw - 32px);
+                max-width: 340px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<!-- 顶部消息弹窗 (电影票打孔遮罩 Toast) -->
+<div id="toast-container"></div>
+
+<!-- LOADING SCENE 呼吸线框遮罩 -->
+<div id="loading-scene-backdrop">
+    <div class="loading-scene-box" id="loading-scene-box" data-text="LOADING SCENE"></div>
+    <div class="loading-subtext" id="loading-subtext">正在同步向量与记忆档案...</div>
+</div>
+
+<div class="app-shell">
+    <!-- 1. 顶部悬浮导航岛 -->
+    <header class="top-nav-island">
+        <div class="brand-area">
+            <div class="brand-title">
+                <span>✉️ 信笺 · 初晴</span>
+            </div>
+            <span class="brand-sub">GEMINI RAG ARCHIVE</span>
+        </div>
+
+        <div class="nav-controls">
+            <div class="branch-select-wrap" title="切换分支记忆隔间（物理防串线）">
+                <select id="branch-select" class="branch-select"></select>
+            </div>
+            <button class="btn-chuqing icon-only" id="btn-new-branch" title="➕ 新建分支隔间">
+                <i class="fa-solid fa-plus"></i>
+            </button>
+            <button class="btn-chuqing" id="btn-open-drawer" title="📚 打开当前分支记忆抽屉">
+                <span>📚 <span class="nav-btn-text">记忆库</span></span>
+                <span class="badge-count" id="memory-count-badge">0</span>
+            </button>
+            <button class="btn-chuqing icon-only" id="btn-open-settings" title="⚙️ 配置 API Key 与 GitHub 仓库">
+                <i class="fa-solid fa-gear"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- 2. 模式切换栏 (支持「官方 Gemini App 伴侣模式」与「网页直聊模式」互斥全屏切换) -->
+    <div class="mode-bar">
+        <div class="mode-tabs">
+            <button class="mode-tab" id="tab-toggle-companion" title="适合平时在官方 Gemini App 聊天，复制过来存记忆、或搜记忆打包带走">
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                <span>记忆伴侣台</span>
+            </button>
+            <button class="mode-tab active" id="tab-focus-chat" title="只看下方初晴信笺对话框">
+                <i class="fa-regular fa-comments"></i>
+                <span>信笺对话</span>
+            </button>
+        </div>
+
+        <div class="sync-status" id="sync-status-indicator">
+            <span class="status-dot" id="github-status-dot"></span>
+            <span id="github-status-text">本地缓存模式 (未连 GitHub)</span>
+            <button class="mes-action-link" id="btn-manual-pull" title="从 GitHub 重新拉取当前分支最新 JSON">↻ 刷新</button>
+        </div>
+    </div>
+
+    <!-- 3. 官方 Gemini App 伴侣工作台 (与信笺对话互斥全屏切换) -->
+    <section id="companion-panel">
+        <div class="companion-grid">
+            <!-- 左栏：快速入库 -->
+            <div class="companion-box">
+                <div class="companion-box-header">
+                    <span class="companion-box-title">📥 快速归档入库</span>
+                    <button class="btn-chuqing" id="btn-paste-clipboard" style="height:26px;font-size:12px;padding:0 9px;">
+                        📋 一键读剪贴板
+                    </button>
+                </div>
+
+                <textarea id="quick-archive-text" class="chuqing-textarea" rows="3" placeholder="把官方 Gemini 总结好的内容（或原对话片段）粘贴到这里..."></textarea>
+
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+                    <span style="font-size:12px;color:var(--color-text-light);font-weight:700;">点选 #标签（点一下盖印 𝔖）：</span>
+                    <button class="mes-action-link" id="btn-add-custom-tag">+ 新增自定义标签</button>
+                </div>
+                <div class="tag-picker-bar" id="quick-tag-picker"></div>
+
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:2px;">
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <label style="font-size:12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
+                            <input type="checkbox" id="chk-ai-summarize">
+                            <span>入库前让 AI 提炼为 100 字摘要并补标签</span>
+                        </label>
+                        <input type="text" id="quick-event-input" class="chuqing-input" placeholder="事件类型 (如: 日常/约定)" style="width:140px;height:28px;padding:2px 8px;font-size:12px;">
+                    </div>
+                    <button class="btn-chuqing primary" id="btn-submit-archive">
+                        <i class="fa-solid fa-box-archive"></i>
+                        <span>生成向量并归档 GitHub</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 右栏：向量检索 & 打包带回官方 App -->
+            <div class="companion-box">
+                <div class="companion-box-header">
+                    <span class="companion-box-title">🔮 唤醒记忆打包</span>
+                    <span class="badge-count" id="companion-recall-count">Top-5 检索</span>
+                </div>
+
+                <div style="display:flex;gap:8px;">
+                    <input type="text" id="quick-recall-query" class="chuqing-input" placeholder="输入想聊的话题，检索最匹配的记忆...">
+                    <button class="btn-chuqing bot-style" id="btn-run-recall" style="flex-shrink:0;">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <span>唤醒</span>
+                    </button>
+                </div>
+
+                <div id="quick-recall-results" style="max-height:145px;overflow-y:auto;background:rgba(var(--rgb-white),0.6);border:1px dashed var(--color-border-bot);border-radius:var(--radius-sm);padding:8px 12px;font-size:12.5px;color:var(--color-text-light);">
+                    <div style="color:var(--color-text-faded);text-align:center;padding:18px 0;">
+                        输入话题点「唤醒」，这里会用余弦相似度捞出最匹配的记忆切片 ✨
+                    </div>
+                </div>
+
+                <div style="display:flex;justify-content:flex-end;gap:8px;">
+                    <button class="btn-chuqing" id="btn-copy-recalled-pack">
+                        <i class="fa-regular fa-copy"></i>
+                        <span>📋 一键复制「记忆唤醒包」去官方 App 粘贴</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 4. 信笺消息流 (#chat) -->
+    <main id="chat"></main>
+
+    <!-- 5. 底部输入与控制栏 -->
+    <footer class="bottom-dock">
+        <div class="dock-toolbar">
+            <div class="dock-toolbar-left">
+                <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;" title="开启后，每达到设定轮数自动将近期对话提炼为100字摘要并向量化存入GitHub">
+                    <input type="checkbox" id="chk-auto-archive">
+                    <span>每 <strong id="lbl-auto-turns">5</strong> 轮自动总结入库</span>
+                </label>
+                <span class="toolbar-sep" style="opacity:0.4;">|</span>
+                <div style="display:inline-flex;align-items:center;gap:4px;flex-shrink:0;">
+                    <span style="white-space:nowrap;">召回过滤:</span>
+                    <select id="chat-tag-filter" class="chuqing-input">
+                        <option value="">全部标签 (Top-5)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="dock-toolbar-right">
+                <button class="mes-action-link" id="btn-extract-round" title="将最近对话提炼为 100 字摘要 + 向量化入库 GitHub">
+                    ✨ 手动提取当前回合记忆
+                </button>
+                <button class="mes-action-link" id="btn-clear-chat" title="清空当前屏幕对话（不影响已入库的 GitHub 长期记忆）">
+                    🧹 清空屏幕对话
+                </button>
+            </div>
+        </div>
+
+        <div class="dock-input-row">
+            <textarea id="user-input" class="chuqing-textarea" rows="1" placeholder="在信笺上写下你的话（发送前自动通过 text-embedding-004 唤醒当前分支记忆）..."></textarea>
+            <button class="btn-chuqing primary" id="btn-send-msg" style="height:42px;padding:0 18px;">
+                <i class="fa-regular fa-paper-plane"></i>
+                <span>发送</span>
+            </button>
+        </div>
+    </footer>
+</div>
+
+<!-- ================================================
+     📚 记忆管理抽屉 (支持按标签筛选、查看、手动编辑、删除并同步 GitHub)
+     ================================================ -->
+<div class="drawer-backdrop" id="drawer-backdrop"></div>
+<aside class="memory-drawer" id="memory-drawer">
+    <div class="drawer-header">
+        <div class="drawer-title">
+            <span>📚 分支记忆档案馆</span>
+            <span class="brand-sub" id="drawer-branch-label">main</span>
+        </div>
+        <button class="btn-chuqing icon-only" id="btn-close-drawer">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+
+    <div class="drawer-body">
+        <!-- 搜索与标签筛选栏 -->
+        <div style="display:flex;gap:8px;">
+            <input type="text" id="drawer-search-input" class="chuqing-input" placeholder="🔍 搜索记忆内容、事件或日期...">
+            <button class="btn-chuqing" id="btn-export-json" title="导出当前分支 JSON 备份">导出</button>
+        </div>
+
+        <!-- 标签筛选胶囊栏 -->
+        <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:12px;font-weight:700;color:var(--color-text-light);">按 #标签 筛选（点击管理自定义标签池）：</span>
+                <button class="mes-action-link" id="btn-manage-tags">🏷️ 管理标签池</button>
+            </div>
+            <div class="tag-picker-bar" id="drawer-tag-filter-bar"></div>
+        </div>
+
+        <!-- 切片列表 -->
+        <div id="drawer-slice-list" style="display:flex;flex-direction:column;gap:12px;"></div>
+    </div>
+</aside>
+
+<!-- ================================================
+     ⚙️ 配置弹窗 (API Key / GitHub PAT / 全局底座设定)
+     ================================================ -->
+<div class="modal-overlay" id="settings-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <span class="modal-title">⚙️ 初晴 · 核心连接与全局底座配置</span>
+            <button class="btn-chuqing icon-only" id="btn-close-settings">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">
+                    <span>1. Gemini API Key</span>
+                    <span style="font-weight:400;font-size:11px;color:var(--color-bot-text);">仅保存在本地浏览器 localStorage</span>
+                </label>
+                <input type="password" id="cfg-gemini-key" class="chuqing-input" placeholder="AIzaSy... (用于 text-embedding-004 向量计算与总结/对话)">
+                <span class="form-hint">在 Google AI Studio 免费获取。即使只用官方 Gemini App 聊天，填上 Key 即可免费调用官方向量模型算语义坐标。</span>
+            </div>
+
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="form-label">API Base URL (可选反代)</label>
+                    <input type="text" id="cfg-gemini-base" class="chuqing-input" placeholder="https://generativelanguage.googleapis.com">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">对话/总结模型</label>
+                    <input type="text" id="cfg-chat-model" class="chuqing-input" placeholder="gemini-2.5-flash">
+                </div>
+            </div>
+
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="form-label">向量模型 (Embedding)</label>
+                    <input type="text" id="cfg-embed-model" class="chuqing-input" placeholder="text-embedding-004">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Top-K 召回条数 / 自动总结轮数</label>
+                    <div style="display:flex;gap:6px;">
+                        <input type="number" id="cfg-top-k" class="chuqing-input" min="1" max="20" value="5" title="默认每次唤醒前 K 条记忆">
+                        <input type="number" id="cfg-auto-turns" class="chuqing-input" min="2" max="50" value="5" title="每 N 轮自动总结">
+                    </div>
+                </div>
+            </div>
+
+            <hr style="border:none;border-top:1px dashed var(--color-border);margin:4px 0;">
+
+            <div class="form-group">
+                <label class="form-label">
+                    <span>2. GitHub Personal Access Token (PAT)</span>
+                    <span style="font-weight:400;font-size:11px;color:var(--color-bot-text);">需勾选 repo 读写权限</span>
+                </label>
+                <input type="password" id="cfg-github-pat" class="chuqing-input" placeholder="ghp_... 或 github_pat_...">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    <span>3. GitHub 私有仓库名 (Owner/Repo)</span>
+                    <button class="mes-action-link" id="btn-test-github">🔌 测试连接并初始化目录</button>
+                </label>
+                <input type="text" id="cfg-github-repo" class="chuqing-input" placeholder="例如: yourname/gemini-memory-vault">
+                <span class="form-hint">将自动在仓库下维护 <code>global_profile.json</code> 与 <code>branches/{分支名}.json</code>，彻底物理隔离防串线。</span>
+            </div>
+
+            <hr style="border:none;border-top:1px dashed var(--color-border);margin:4px 0;">
+
+            <div class="form-group">
+                <label class="form-label">
+                    <span>4. 跨分支全局底座设定 (global_profile.json)</span>
+                </label>
+                <textarea id="cfg-global-profile" class="chuqing-textarea" rows="3" placeholder="在这里写跨分支共享的人设、你的称呼、核心长期设定（所有分支都会自动携带）..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-chuqing" id="btn-cancel-settings">取消</button>
+            <button class="btn-chuqing primary" id="btn-save-settings">💾 保存配置并同步 GitHub</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================
+     ✏️ 单条记忆切片编辑弹窗
+     ================================================ -->
+<div class="modal-overlay" id="edit-slice-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <span class="modal-title">✏️ 编辑记忆切片</span>
+            <button class="btn-chuqing icon-only" id="btn-close-edit-slice">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="edit-slice-id">
+            <div class="form-group">
+                <label class="form-label">记忆内容 (100-200字精简事件总结)</label>
+                <textarea id="edit-slice-text" class="chuqing-textarea" rows="4"></textarea>
+            </div>
+            <div class="form-grid-2">
+                <div class="form-group">
+                    <label class="form-label">日期 (YYYY-MM-DD)</label>
+                    <input type="text" id="edit-slice-date" class="chuqing-input">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">事件类型 (event)</label>
+                    <input type="text" id="edit-slice-event" class="chuqing-input" placeholder="日常/节日/剧情">
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">标签 (用逗号分隔，如: 话题, 游戏进度)</label>
+                <input type="text" id="edit-slice-tags" class="chuqing-input">
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-chuqing" id="btn-cancel-edit-slice">取消</button>
+            <button class="btn-chuqing primary" id="btn-save-edit-slice">💾 重新计算向量并保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+/* ============================================================================
+   信笺 · 初晴 | Gemini 向量长期记忆库 (RAG) 核心逻辑
+   ============================================================================ */
+
+const STORAGE_KEYS = {
+    CONFIG: 'chuqing_rag_config_v1',
+    GLOBAL_PROFILE: 'chuqing_rag_global_profile_v1',
+    CURRENT_BRANCH: 'chuqing_rag_current_branch_v1',
+    LOCAL_BRANCHES: 'chuqing_rag_branches_cache_v1',
+    CHAT_HISTORY: 'chuqing_rag_chat_history_v1'
+};
+
+const DEFAULT_TAGS = ['核心设定', '日常点滴', '重要事件', '偏好习惯', '约定待办', '剧情进度', '感情升温'];
+
+// 全局状态
+const state = {
+    config: {
+        geminiKey: '',
+        geminiBase: 'https://generativelanguage.googleapis.com',
+        chatModel: 'gemini-2.5-flash',
+        embedModel: 'text-embedding-004',
+        topK: 5,
+        autoTurns: 5,
+        autoArchiveEnabled: false,
+        githubPat: '',
+        githubRepo: ''
+    },
+    globalProfile: {
+        persona: '你是我的专属 AI 伴侣与私人助手，温柔、细腻、注重细节，会自然地结合唤醒的过往记忆与我对话。',
+        customTags: [...DEFAULT_TAGS],
+        branchList: ['main', 'daily_life', 'story_branch'],
+        sha: null
+    },
+    currentBranch: 'main',
+    // 分支记忆库缓存: { [branchName]: { slices: [], sha: null } }
+    branchCache: {},
+    selectedQuickTags: new Set(['日常点滴']),
+    drawerFilterTag: '',
+    lastRecalledSlices: [],
+    turnCounter: 0
+};
+
+/* ============================================================================
+   1. 工具函数：电影票 Toast、LOADING SCENE 动画、UUID、日期
+   ============================================================================ */
+function showToast(title, message = '', type = 'success', duration = 3400) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `
+        <div class="toast-title">${escapeHtml(title)}</div>
+        ${message ? `<div class="toast-message">${escapeHtml(message)}</div>` : ''}
+    `;
+    toast.addEventListener('click', () => toast.remove());
+    container.appendChild(toast);
+    setTimeout(() => {
+        if (toast.parentNode) {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-8px)';
+            setTimeout(() => toast.remove(), 300);
+        }
+    }, duration);
+}
+
+function showLoading(sceneText = 'LOADING SCENE', subText = '正在同步向量与记忆档案...') {
+    const backdrop = document.getElementById('loading-scene-backdrop');
+    const box = document.getElementById('loading-scene-box');
+    const sub = document.getElementById('loading-subtext');
+    box.setAttribute('data-text', sceneText);
+    sub.textContent = subText;
+    backdrop.classList.add('active');
+}
+
+function hideLoading() {
+    document.getElementById('loading-scene-backdrop').classList.remove('active');
+}
+
+function generateUUID() {
+    if (crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
+
+function getTodayDate() {
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function getTimeStr() {
+    const d = new Date();
+    return d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+}
+
+function escapeHtml(str = '') {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+// Base64 UTF-8 安全编解码 (用于 GitHub REST API)
+function utf8ToBase64(str) {
+    return btoa(unescape(encodeURIComponent(str)));
+}
+
+function base64ToUtf8(b64) {
+    return decodeURIComponent(escape(atob(b64.replace(/\s/g, ''))));
+}
+
+/* ============================================================================
+   2. 向量化 (Gemini text-embedding-004) 与前端余弦相似度计算
+   ============================================================================ */
+
+// 将向量保留 4 位小数瘦身，减小 GitHub JSON 体积 50%
+function compactVector(vec) {
+    if (!Array.isArray(vec)) return [];
+    return vec.map(v => Math.round(Number(v) * 10000) / 10000);
+}
+
+// 本地轻量语义向量兜底 (当未填 API Key 时也能生成 128 维特征向量)
+function computeLocalFallbackVector(text) {
+    const dim = 128;
+    const vec = new Array(dim).fill(0);
+    const clean = (text || '').toLowerCase();
+    for (let i = 0; i < clean.length; i++) {
+        const code1 = clean.charCodeAt(i);
+        const code2 = i + 1 < clean.length ? clean.charCodeAt(i + 1) : 0;
+        vec[code1 % dim] += 1;
+        vec[(code1 * 31 + code2) % dim] += 0.7;
+    }
+    const norm = Math.sqrt(vec.reduce((s, v) => s + v * v, 0)) || 1;
+    return compactVector(vec.map(v => v / norm));
+}
+
+// 调用 Gemini Embedding API (自动兼容 text-embedding-004 与 gemini-embedding-001)
+async function getEmbeddingVector(text) {
+    const key = state.config.geminiKey.trim();
+    if (!key) {
+        return computeLocalFallbackVector(text);
+    }
+    const base = (state.config.geminiBase || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
+    const modelsToTry = [state.config.embedModel || 'text-embedding-004', 'gemini-embedding-001'];
+
+    for (const modelName of modelsToTry) {
+        try {
+            const url = `${base}/v1beta/models/${modelName}:embedContent?key=${encodeURIComponent(key)}`;
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    model: `models/${modelName}`,
+                    content: { parts: [{ text: text }] }
+                })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.embedding && Array.isArray(data.embedding.values)) {
+                    return compactVector(data.embedding.values);
+                }
+            }
+        } catch (err) {
+            console.warn(`Embedding model ${modelName} failed, trying fallback:`, err);
+        }
+    }
+    return computeLocalFallbackVector(text);
+}
+
+// 余弦相似度计算 (Cosine Similarity) + 标签/字面加权混合兜底
+function cosineSimilarity(vecA, vecB) {
+    if (!Array.isArray(vecA) || !Array.isArray(vecB) || vecA.length === 0 || vecB.length === 0) {
+        return 0;
+    }
+    // 若维度不同（例如切换过本地向量与云端 768 维向量），返回 0 交给关键词兜底
+    if (vecA.length !== vecB.length) return 0;
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < vecA.length; i++) {
+        dot += vecA[i] * vecB[i];
+        normA += vecA[i] * vecA[i];
+        normB += vecB[i] * vecB[i];
+    }
+    if (normA === 0 || normB === 0) return 0;
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function lexicalOverlapScore(query, slice) {
+    const q = (query || '').trim().toLowerCase();
+    if (!q) return 0;
+    const target = `${slice.text || ''} ${(slice.tags || []).join(' ')} ${slice.event || ''}`.toLowerCase();
+    let hits = 0;
+    for (const ch of q) {
+        if (ch.trim() && target.includes(ch)) hits++;
+    }
+    return (hits / Math.max(q.length, 1)) * 0.25;
+}
+
+// 检索当前分支 Top-K 记忆切片
+async function retrieveTopKMemories(queryText, filterTag = '', topK = state.config.topK) {
+    const branchData = getCurrentBranchData();
+    let candidates = branchData.slices || [];
+
+    if (filterTag) {
+        candidates = candidates.filter(s => Array.isArray(s.tags) && s.tags.includes(filterTag));
+    }
+    if (candidates.length === 0) return [];
+
+    const queryVec = await getEmbeddingVector(queryText);
+
+    const scored = candidates.map(slice => {
+        const cos = cosineSimilarity(queryVec, slice.vector || []);
+        const lex = lexicalOverlapScore(queryText, slice);
+        const finalScore = cos > 0 ? (cos * 0.88 + lex * 0.12) : lex;
+        return { slice, score: finalScore };
+    });
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, topK);
+}
+
+/* ============================================================================
+   3. GitHub REST API 防串线存储层 (global_profile.json & branches/{name}.json)
+   ============================================================================ */
+function isGithubConfigured() {
+    return Boolean(state.config.githubPat.trim() && state.config.githubRepo.trim().includes('/'));
+}
+
+function updateGithubStatusUI(online, text) {
+    const dot = document.getElementById('github-status-dot');
+    const label = document.getElementById('github-status-text');
+    if (online) {
+        dot.classList.add('online');
+    } else {
+        dot.classList.remove('online');
+    }
+    label.textContent = text;
+}
+
+async function githubGetFile(path) {
+    const repo = state.config.githubRepo.trim();
+    const pat = state.config.githubPat.trim();
+    const url = `https://api.github.com/repos/${repo}/contents/${path}?t=${Date.now()}`;
+    const res = await fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${pat}`,
+            'Accept': 'application/vnd.github+json'
+        }
+    });
+    if (res.status === 404) return null;
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`GitHub 读取失败 (${res.status}): ${errText}`);
+    }
+    const data = await res.json();
+    const contentStr = base64ToUtf8(data.content || '');
+    return {
+        json: JSON.parse(contentStr),
+        sha: data.sha
+    };
+}
+
+async function githubPutFile(path, jsonData, sha = null, commitMsg = 'Update memory archive via Chuqing RAG') {
+    const repo = state.config.githubRepo.trim();
+    const pat = state.config.githubPat.trim();
+    const url = `https://api.github.com/repos/${repo}/contents/${path}`;
+
+    // 如果未传 sha，先尝试获取最新 sha 防止 409 Conflict
+    let latestSha = sha;
+    if (!latestSha) {
+        try {
+            const existing = await githubGetFile(path);
+            if (existing && existing.sha) latestSha = existing.sha;
+        } catch (e) {
+            // 忽略
+        }
+    }
+
+    const bodyObj = {
+        message: commitMsg,
+        content: utf8ToBase64(JSON.stringify(jsonData, null, 2))
+    };
+    if (latestSha) bodyObj.sha = latestSha;
+
+    let res = await fetch(url, {
+        method: 'PUT',
+        headers: {
+            'Authorization': `Bearer ${pat}`,
+            'Accept': 'application/vnd.github+json',
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(bodyObj)
+    });
+
+    // 若发生 409 冲突，自动重拉最新 sha 重试一次
+    if (res.status === 409) {
+        const latest = await githubGetFile(path);
+        if (latest && latest.sha) {
+            bodyObj.sha = latest.sha;
+            res = await fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${pat}`,
+                    'Accept': 'application/vnd.github+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(bodyObj)
+            });
+        }
+    }
+
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`GitHub 写入失败 (${res.status}): ${errText}`);
+    }
+    const result = await res.json();
+    return result.content ? result.content.sha : null;
+}
+
+// 同步加载全局底座 global_profile.json
+async function syncGlobalProfileFromGithub() {
+    if (!isGithubConfigured()) return;
+    try {
+        const remote = await githubGetFile('global_profile.json');
+        if (remote && remote.json) {
+            state.globalProfile = {
+                persona: remote.json.persona ?? state.globalProfile.persona,
+                customTags: Array.isArray(remote.json.customTags) ? remote.json.customTags : state.globalProfile.customTags,
+                branchList: Array.isArray(remote.json.branchList) ? remote.json.branchList : state.globalProfile.branchList,
+                sha: remote.sha
+            };
+            saveLocalState();
+        } else {
+            // 初始化创建 global_profile.json
+            const newSha = await githubPutFile('global_profile.json', {
+                persona: state.globalProfile.persona,
+                customTags: state.globalProfile.customTags,
+                branchList: state.globalProfile.branchList,
+                updatedAt: new Date().toISOString()
+            }, null, 'Init global_profile.json');
+            state.globalProfile.sha = newSha;
+            saveLocalState();
+        }
+        updateGithubStatusUI(true, `已连接 GitHub: ${state.config.githubRepo}`);
+    } catch (err) {
+        console.error(err);
+        updateGithubStatusUI(false, `GitHub 连接异常 (使用本地缓存)`);
+        showToast('GitHub 同步提示', err.message, 'warning');
+    }
+}
+
+// 同步加载指定分支 branches/{branch_name}.json
+async function loadBranchFromGithub(branchName, showLoader = false) {
+    if (!state.branchCache[branchName]) {
+        state.branchCache[branchName] = { slices: [], sha: null };
+    }
+    if (!isGithubConfigured()) {
+        renderAllUI();
+        return;
+    }
+    if (showLoader) showLoading('LOADING BRANCH', `正在从 GitHub 加载分支 [${branchName}] 记忆库...`);
+    try {
+        const path = `branches/${branchName}.json`;
+        const remote = await githubGetFile(path);
+        if (remote && remote.json) {
+            const slices = Array.isArray(remote.json) ? remote.json : (remote.json.slices || []);
+            state.branchCache[branchName] = {
+                slices: slices,
+                sha: remote.sha
+            };
+        } else {
+            // 远端还没有该分支文件，初始化空数组写入
+            const newSha = await githubPutFile(path, [], null, `Init branch ${branchName}.json`);
+            state.branchCache[branchName] = { slices: [], sha: newSha };
+        }
+        saveLocalState();
+        updateGithubStatusUI(true, `已同步分支: branches/${branchName}.json`);
+    } catch (err) {
+        console.error(err);
+        showToast('分支读取失败', err.message, 'error');
+    } finally {
+        if (showLoader) hideLoading();
+        renderAllUI();
+    }
+}
+
+// 将当前分支写回 GitHub
+async function pushCurrentBranchToGithub(commitMsg = 'Archive memory slice') {
+    saveLocalState();
+    renderAllUI();
+    if (!isGithubConfigured()) {
+        showToast('记忆已归档 (本地)', '配置 GitHub PAT 后可自动同步至云端私有库', 'info');
+        return;
+    }
+    const branchName = state.currentBranch;
+    const branchData = getCurrentBranchData();
+    const path = `branches/${branchName}.json`;
+    const newSha = await githubPutFile(path, branchData.slices, branchData.sha, commitMsg);
+    branchData.sha = newSha;
+    saveLocalState();
+    updateGithubStatusUI(true, `已归档至 branches/${branchName}.json`);
+    showToast('记忆已归档', `成功同步至 GitHub 分支 [${branchName}] (${branchData.slices.length} 条切片)`, 'success');
+}
+
+/* ============================================================================
+   4. Gemini 对话与自动 100 字摘要提炼
+   ============================================================================ */
+async function callGeminiChat(promptText, systemInstruction = '') {
+    const key = state.config.geminiKey.trim();
+    if (!key) {
+        throw new Error('请先点击右上角 ⚙️ 配置 Gemini API Key');
+    }
+    const base = (state.config.geminiBase || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
+    const model = state.config.chatModel.trim() || 'gemini-2.5-flash';
+    const url = `${base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+
+    const payload = {
+        contents: [{ role: 'user', parts: [{ text: promptText }] }]
+    };
+    if (systemInstruction) {
+        payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+    }
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Gemini 调用失败 (${res.status}): ${errText}`);
+    }
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+    return text.trim();
+}
+
+// 让模型将对话或长文本提炼为 100-200 字精简总结，并优先从自定义标签池打 2~3 个标签
+async function summarizeAndTagWithAI(rawText) {
+    const tagPoolStr = state.globalProfile.customTags.join('、');
+    const sysPrompt = `你是一个专业的长期记忆归档助手。请将用户提供的对话或文本提炼为一段 100~180 字的精简事件总结（保留关键事实、情感细节、约定或设定），并挑选 2~3 个分类标签。
+优先从以下预设标签池中选择标签：[${tagPoolStr}]；若确实需要，最多可额外自拟 1 个简短标签。
+请严格只输出如下 JSON 格式（不要包含 markdown 代码块符号）：
+{"text": "100-180字精简总结", "tags": ["标签1", "标签2"], "event": "日常/节日/重要事件"}`;
+
+    const reply = await callGeminiChat(rawText, sysPrompt);
+    const cleaned = reply.replace(/```json|```/gi, '').trim();
+    try {
+        const parsed = JSON.parse(cleaned);
+        return {
+            text: parsed.text || rawText.slice(0, 200),
+            tags: Array.isArray(parsed.tags) && parsed.tags.length ? parsed.tags : ['日常点滴'],
+            event: parsed.event || '日常记录'
+        };
+    } catch (e) {
+        return {
+            text: reply || rawText.slice(0, 200),
+            tags: Array.from(state.selectedQuickTags),
+            event: '日常记录'
+        };
+    }
+}
+
+/* ============================================================================
+   5. 本地状态持久化与初始化
+   ============================================================================ */
+function getCurrentBranchData() {
+    if (!state.branchCache[state.currentBranch]) {
+        state.branchCache[state.currentBranch] = { slices: [], sha: null };
+    }
+    return state.branchCache[state.currentBranch];
+}
+
+function loadLocalState() {
+    try {
+        const cfg = JSON.parse(localStorage.getItem(STORAGE_KEYS.CONFIG) || '{}');
+        Object.assign(state.config, cfg);
+
+        const gp = JSON.parse(localStorage.getItem(STORAGE_KEYS.GLOBAL_PROFILE) || '{}');
+        if (gp.persona) state.globalProfile.persona = gp.persona;
+        if (Array.isArray(gp.customTags) && gp.customTags.length) state.globalProfile.customTags = gp.customTags;
+        if (Array.isArray(gp.branchList) && gp.branchList.length) state.globalProfile.branchList = gp.branchList;
+
+        const savedBranch = localStorage.getItem(STORAGE_KEYS.CURRENT_BRANCH);
+        if (savedBranch && state.globalProfile.branchList.includes(savedBranch)) {
+            state.currentBranch = savedBranch;
+        }
+
+        const cachedBranches = JSON.parse(localStorage.getItem(STORAGE_KEYS.LOCAL_BRANCHES) || '{}');
+        state.branchCache = cachedBranches;
+    } catch (e) {
+        console.warn('Failed to load local state:', e);
+    }
+
+    // 如果完全是第一次打开，塞一条示例记忆切片方便立即体验
+    const cur = getCurrentBranchData();
+    if (cur.slices.length === 0 && !localStorage.getItem(STORAGE_KEYS.LOCAL_BRANCHES)) {
+        const demoText = '初次搭建「信笺 · 初晴」Gemini 向量长期记忆库（RAG）。平时习惯使用官方 Gemini App 聊天，通过本网页与官网伴侣脚本将总结归档至 GitHub 分支 JSON，并在需要时按余弦相似度唤醒记忆。';
+        cur.slices.push({
+            id: generateUUID(),
+            text: demoText,
+            date: getTodayDate(),
+            tags: ['核心设定', '重要事件'],
+            event: '纪念日/初始化',
+            vector: computeLocalFallbackVector(demoText)
+        });
+    }
+}
+
+function saveLocalState() {
+    localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(state.config));
+    localStorage.setItem(STORAGE_KEYS.GLOBAL_PROFILE, JSON.stringify(state.globalProfile));
+    localStorage.setItem(STORAGE_KEYS.CURRENT_BRANCH, state.currentBranch);
+    localStorage.setItem(STORAGE_KEYS.LOCAL_BRANCHES, JSON.stringify(state.branchCache));
+}
+
+/* ============================================================================
+   6. 界面渲染 (导航岛分支、标签池、伴侣台、初晴信笺聊天卡片、记忆抽屉)
+   ============================================================================ */
+function renderBranchSelect() {
+    const select = document.getElementById('branch-select');
+    select.innerHTML = '';
+    state.globalProfile.branchList.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b;
+        opt.textContent = `🌿 ${b}`;
+        if (b === state.currentBranch) opt.selected = true;
+        select.appendChild(opt);
+    });
+    document.getElementById('drawer-branch-label').textContent = state.currentBranch;
+    const count = getCurrentBranchData().slices.length;
+    document.getElementById('memory-count-badge').textContent = count;
+}
+
+function renderTagPickers() {
+    const tags = state.globalProfile.customTags;
+
+    // 1. 伴侣台快速入库标签选择器
+    const quickPicker = document.getElementById('quick-tag-picker');
+    quickPicker.innerHTML = '';
+    tags.forEach(tag => {
+        const chip = document.createElement('span');
+        const isSelected = state.selectedQuickTags.has(tag);
+        chip.className = `tag-chip ${isSelected ? 'selected' : ''}`;
+        chip.textContent = `#${tag}`;
+        chip.addEventListener('click', () => {
+            if (state.selectedQuickTags.has(tag)) {
+                state.selectedQuickTags.delete(tag);
+            } else {
+                state.selectedQuickTags.add(tag);
+            }
+            renderTagPickers();
+        });
+        quickPicker.appendChild(chip);
+    });
+
+    // 2. 底部聊天召回过滤下拉框
+    const chatFilter = document.getElementById('chat-tag-filter');
+    const prevVal = chatFilter.value;
+    chatFilter.innerHTML = `<option value="">全部标签 (Top-${state.config.topK})</option>`;
+    tags.forEach(tag => {
+        const opt = document.createElement('option');
+        opt.value = tag;
+        opt.textContent = `#${tag}`;
+        chatFilter.appendChild(opt);
+    });
+    chatFilter.value = prevVal;
+
+    // 3. 抽屉标签过滤栏
+    const drawerBar = document.getElementById('drawer-tag-filter-bar');
+    drawerBar.innerHTML = '';
+    const allChip = document.createElement('span');
+    allChip.className = `tag-chip ${state.drawerFilterTag === '' ? 'selected' : ''}`;
+    allChip.textContent = '全部切片';
+    allChip.addEventListener('click', () => {
+        state.drawerFilterTag = '';
+        renderTagPickers();
+        renderDrawerSlices();
+    });
+    drawerBar.appendChild(allChip);
+
+    tags.forEach(tag => {
+        const chip = document.createElement('span');
+        chip.className = `tag-chip ${state.drawerFilterTag === tag ? 'selected' : ''}`;
+        chip.textContent = `#${tag}`;
+        chip.addEventListener('click', () => {
+            state.drawerFilterTag = state.drawerFilterTag === tag ? '' : tag;
+            renderTagPickers();
+            renderDrawerSlices();
+        });
+        drawerBar.appendChild(chip);
+    });
+}
+
+function renderDrawerSlices() {
+    const listEl = document.getElementById('drawer-slice-list');
+    const searchVal = (document.getElementById('drawer-search-input').value || '').trim().toLowerCase();
+    const slices = [...(getCurrentBranchData().slices || [])].reverse();
+
+    const filtered = slices.filter(s => {
+        if (state.drawerFilterTag && !(s.tags || []).includes(state.drawerFilterTag)) return false;
+        if (searchVal) {
+            const hay = `${s.text} ${(s.tags || []).join(' ')} ${s.event || ''} ${s.date || ''}`.toLowerCase();
+            if (!hay.includes(searchVal)) return false;
+        }
+        return true;
+    });
+
+    if (filtered.length === 0) {
+        listEl.innerHTML = `
+            <div style="text-align:center;padding:36px 16px;color:var(--color-text-faded);font-size:13px;">
+                当前筛选条件下暂无记忆切片 ✉️
+            </div>
+        `;
+        return;
+    }
+
+    listEl.innerHTML = '';
+    filtered.forEach(s => {
+        const card = document.createElement('div');
+        card.className = 'memory-slice-card';
+        const vecDim = Array.isArray(s.vector) ? s.vector.length : 0;
+        card.innerHTML = `
+            <div class="slice-card-top">
+                <span>📅 ${escapeHtml(s.date || '未知日期')} · ${escapeHtml(s.event || '日常')}</span>
+                <span title="向量维度: ${vecDim}">◈ VEC-${vecDim}D</span>
+            </div>
+            <div class="slice-card-text">${escapeHtml(s.text)}</div>
+            <div class="slice-card-footer">
+                <div class="slice-tags">
+                    ${(s.tags || []).map(t => `<span class="slice-tag-badge">#${escapeHtml(t)}</span>`).join('')}
+                </div>
+                <div style="display:flex;gap:6px;">
+                    <button class="mes-action-link btn-copy-single" title="复制这条记忆">📋 复制</button>
+                    <button class="mes-action-link btn-edit-single" title="编辑并重算向量">✏️ 编辑</button>
+                    <button class="mes-action-link btn-del-single" style="color:var(--color-danger);" title="删除并同步 GitHub">🗑️ 删除</button>
+                </div>
+            </div>
+        `;
+
+        card.querySelector('.btn-copy-single').addEventListener('click', () => {
+            navigator.clipboard.writeText(`【记忆切片 | ${s.date} | #${(s.tags || []).join(' #')}】\n${s.text}`);
+            showToast('已复制切片', '可直接粘贴至官方 Gemini App', 'info');
+        });
+
+        card.querySelector('.btn-edit-single').addEventListener('click', () => openEditSliceModal(s));
+
+        card.querySelector('.btn-del-single').addEventListener('click', async () => {
+            if (!confirm(`确定删除这条记忆切片吗？\n「${s.text.slice(0, 45)}...」`)) return;
+            const branchData = getCurrentBranchData();
+            branchData.slices = branchData.slices.filter(item => item.id !== s.id);
+            await pushCurrentBranchToGithub('Delete memory slice');
+        });
+
+        listEl.appendChild(card);
+    });
+}
+
+// 渲染聊天区消息卡片 (带初晴 .mes_reasoning_header 记忆召回小胶囊)
+function getChatHistory() {
+    try {
+        const all = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHAT_HISTORY) || '{}');
+        return all[state.currentBranch] || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveChatHistory(messages) {
+    try {
+        const all = JSON.parse(localStorage.getItem(STORAGE_KEYS.CHAT_HISTORY) || '{}');
+        all[state.currentBranch] = messages;
+        localStorage.setItem(STORAGE_KEYS.CHAT_HISTORY, JSON.stringify(all));
+    } catch (e) {}
+}
+
+function renderChatMessages() {
+    const chatEl = document.getElementById('chat');
+    let messages = getChatHistory();
+
+    if (messages.length === 0) {
+        messages = [{
+            id: '#00',
+            isUser: false,
+            name: 'Gemini · 初晴档案馆',
+            time: getTimeStr(),
+            text: `欢迎回到「${state.currentBranch}」分支记忆隔间。\n\n• 如果你平时主力用 **官方 Gemini App** 聊天：直接在上方「官方 App 记忆伴侣台」粘贴内容一键向量化入库，或者输入话题点「唤醒」一键复制记忆包带回官方 App。\n• 如果你打开了电脑/手机浏览器上的 **gemini.google.com 官网**：配合文件夹里的油猴脚本即可免复制一键抓对话入库！\n• 当然，你也可以直接在下方信笺输入框里和我对话，每次发消息前我都会自动唤醒最相关的长期记忆。`,
+            recalled: []
+        }];
+    }
+
+    chatEl.innerHTML = '';
+    messages.forEach((m, idx) => {
+        const mesDiv = document.createElement('div');
+        mesDiv.className = 'mes';
+        mesDiv.setAttribute('is_user', m.isUser ? 'true' : 'false');
+        mesDiv.setAttribute('mesid', m.id || `#${String(idx + 1).padStart(2, '0')}`);
+
+        let recallHtml = '';
+        if (Array.isArray(m.recalled) && m.recalled.length > 0) {
+            const sliceItemsHtml = m.recalled.map(r => {
+                const pct = (r.score * 100).toFixed(1) + '%';
+                const tagsHtml = (r.slice.tags || []).map(t => `<span class="slice-tag-badge">#${escapeHtml(t)}</span>`).join(' ');
+                return `
+                    <div class="recall-slice-item">
+                        <div class="recall-meta">
+                            <span>📅 ${escapeHtml(r.slice.date || '')} · ${escapeHtml(r.slice.event || '记忆切片')}</span>
+                            <span class="score-pill">相似度 ${pct}</span>
+                        </div>
+                        <div style="color:var(--color-text-dark);margin-bottom:4px;">${escapeHtml(r.slice.text)}</div>
+                        <div>${tagsHtml}</div>
+                    </div>
+                `;
+            }).join('');
+
+            recallHtml = `
+                <div class="mes_reasoning_header" title="点击展开本次向量检索命中的记忆切片">
+                    <span class="mes_reasoning_header_title">本次唤醒了 ${m.recalled.length} 条记忆</span>
+                    <span class="mes_reasoning_arrow">▼</span>
+                </div>
+                <div class="mes_reasoning_content">
+                    ${sliceItemsHtml}
+                </div>
+            `;
+        }
+
+        mesDiv.innerHTML = `
+            <div class="ch_name">
+                <span>${escapeHtml(m.name)}</span>
+                <span class="timestamp">${escapeHtml(m.time || '')}</span>
+            </div>
+            ${recallHtml}
+            <div class="mes_text">${escapeHtml(m.text)}</div>
+            <div class="mes-card-actions">
+                <button class="mes-action-link btn-card-archive" title="将本条消息直接提炼存入当前分支记忆库">📥 存入记忆库</button>
+                <button class="mes-action-link btn-card-copy" title="复制本条消息内容">📋 复制</button>
+            </div>
+        `;
+
+        // 绑定记忆召回小胶囊折叠展开
+        const headerEl = mesDiv.querySelector('.mes_reasoning_header');
+        const contentEl = mesDiv.querySelector('.mes_reasoning_content');
+        if (headerEl && contentEl) {
+            headerEl.addEventListener('click', () => {
+                headerEl.classList.toggle('open');
+                contentEl.classList.toggle('open');
+            });
+        }
+
+        // 绑定单条卡片快速入库与复制
+        mesDiv.querySelector('.btn-card-copy').addEventListener('click', () => {
+            navigator.clipboard.writeText(m.text);
+            showToast('已复制消息', '内容已复制到剪贴板', 'info');
+        });
+
+        mesDiv.querySelector('.btn-card-archive').addEventListener('click', () => {
+            document.getElementById('quick-archive-text').value = m.text;
+            switchViewMode('companion');
+            showToast('已填入伴侣归档台', '确认标签后点击「生成向量并归档 GitHub」即可', 'info');
+        });
+
+        chatEl.appendChild(mesDiv);
+    });
+
+    chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function renderAllUI() {
+    renderBranchSelect();
+    renderTagPickers();
+    renderDrawerSlices();
+    renderChatMessages();
+    document.getElementById('lbl-auto-turns').textContent = state.config.autoTurns;
+    document.getElementById('chk-auto-archive').checked = Boolean(state.config.autoArchiveEnabled);
+    document.getElementById('companion-recall-count').textContent = `Top-${state.config.topK} 检索`;
+}
+
+/* ============================================================================
+   7. 核心业务交互：快速入库、唤醒打包复制、对话与自动总结、切片编辑
+   ============================================================================ */
+
+// 新增一条记忆切片并推送到 GitHub
+async function createAndPushMemorySlice({ rawText, useAiSummary = false, tags = [], eventName = '日常记录' }) {
+    if (!rawText || !rawText.trim()) {
+        showToast('内容为空', '请先粘贴或输入要归档的记忆内容', 'warning');
+        return;
+    }
+    showLoading('VECTORIZING', '正在计算 text-embedding-004 向量并归档至 GitHub...');
+    try {
+        let finalText = rawText.trim();
+        let finalTags = tags.length ? [...tags] : ['日常点滴'];
+        let finalEvent = eventName.trim() || '日常记录';
+
+        if (useAiSummary) {
+            const summaryObj = await summarizeAndTagWithAI(finalText);
+            finalText = summaryObj.text;
+            finalTags = Array.from(new Set([...finalTags, ...summaryObj.tags]));
+            if (!eventName.trim() && summaryObj.event) finalEvent = summaryObj.event;
+
+            // 将 AI 新生成的标签同步进自定义标签池
+            finalTags.forEach(t => {
+                if (!state.globalProfile.customTags.includes(t)) {
+                    state.globalProfile.customTags.push(t);
+                }
+            });
+        }
+
+        const vector = await getEmbeddingVector(`${finalEvent} ${finalTags.join(' ')} ${finalText}`);
+        const newSlice = {
+            id: generateUUID(),
+            text: finalText,
+            date: getTodayDate(),
+            tags: finalTags,
+            event: finalEvent,
+            vector: vector
+        };
+
+        const branchData = getCurrentBranchData();
+        branchData.slices.push(newSlice);
+
+        await pushCurrentBranchToGithub(`Archive memory [${finalEvent}]`);
+        document.getElementById('quick-archive-text').value = '';
+    } catch (err) {
+        console.error(err);
+        showToast('归档出错', err.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 格式化「一键复制回官方 Gemini App」的记忆唤醒包
+function buildRecallPromptPack(queryText, recalledList) {
+    const lines = [];
+    lines.push('【✉️ 初晴 · 长期记忆唤醒档案】');
+    if (state.globalProfile.persona) {
+        lines.push(`▸ 全局底座设定：${state.globalProfile.persona}`);
+    }
+    lines.push(`▸ 当前记忆分支：${state.currentBranch}`);
+    if (recalledList && recalledList.length > 0) {
+        lines.push('▸ 关联过往记忆切片（按向量余弦相似度召回）：');
+        recalledList.forEach((r, idx) => {
+            const pct = (r.score * 100).toFixed(1) + '%';
+            const tagStr = (r.slice.tags || []).map(t => `#${t}`).join(' ');
+            lines.push(`  ${idx + 1}. [${r.slice.date || '过往'} | ${r.slice.event || '记录'} | ${tagStr} | 相关度 ${pct}] ${r.slice.text}`);
+        });
+    }
+    lines.push('---');
+    if (queryText && queryText.trim()) {
+        lines.push(queryText.trim());
+    } else {
+        lines.push('（请结合以上我们的过往记忆，自然地继续下面的对话：）');
+    }
+    return lines.join('\n');
+}
+
+// 网页内直接发送消息 (发消息前向量检索 Top-K -> 拼入 System Prompt -> 对话后按需自动归档)
+async function handleSendChatMessage() {
+    const inputEl = document.getElementById('user-input');
+    const text = inputEl.value.trim();
+    if (!text) return;
+
+    const filterTag = document.getElementById('chat-tag-filter').value;
+    inputEl.value = '';
+
+    const history = getChatHistory();
+    const userMsgId = `#${String(history.length + 1).padStart(2, '0')}`;
+    history.push({
+        id: userMsgId,
+        isUser: true,
+        name: 'You',
+        time: getTimeStr(),
+        text: text,
+        recalled: []
+    });
+    saveChatHistory(history);
+    renderChatMessages();
+
+    showLoading('RECALLING MEMORY', '正在检索向量记忆库并呼叫 Gemini...');
+    try {
+        // 1. 先调 Embedding 计算余弦相似度召回 Top-K
+        const recalled = await retrieveTopKMemories(text, filterTag, state.config.topK);
+
+        // 2. 拼接 System Prompt (全局底座 + Top-K 记忆切片 + 近期上下文)
+        const memoryBlock = recalled.length > 0
+            ? recalled.map((r, i) => `[记忆${i + 1} | ${r.slice.date} | #${(r.slice.tags || []).join(' #')}]: ${r.slice.text}`).join('\n')
+            : '（当前分支暂无命中记忆）';
+
+        const recentTurns = history.slice(-6).map(m => `${m.isUser ? '用户' : 'AI'}: ${m.text}`).join('\n');
+        const sysInstruction = `${state.globalProfile.persona}\n\n【当前分支 (${state.currentBranch}) 唤醒的长期记忆】：\n${memoryBlock}`;
+        const fullPrompt = `近期对话上下文：\n${recentTurns}\n\n请直接回复用户的最新一句话。`;
+
+        const replyText = await callGeminiChat(fullPrompt, sysInstruction);
+
+        const botMsgId = `#${String(history.length + 1).padStart(2, '0')}`;
+        history.push({
+            id: botMsgId,
+            isUser: false,
+            name: 'Gemini',
+            time: getTimeStr(),
+            text: replyText,
+            recalled: recalled
+        });
+        saveChatHistory(history);
+        renderChatMessages();
+
+        // 3. 检查是否开启「每 N 轮自动后台总结」
+        state.turnCounter += 1;
+        if (state.config.autoArchiveEnabled && state.turnCounter >= state.config.autoTurns) {
+            state.turnCounter = 0;
+            triggerRoundMemoryExtraction(true);
+        }
+    } catch (err) {
+        console.error(err);
+        showToast('发送失败', err.message, 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+// 提取当前回合/近期对话记忆入库
+async function triggerRoundMemoryExtraction(isSilentAuto = false) {
+    const history = getChatHistory();
+    if (history.length === 0) {
+        showToast('暂无对话可提取', '请先进行对话或使用上方伴侣台直接粘贴归档', 'warning');
+        return;
+    }
+    const recentText = history.slice(-Math.max(state.config.autoTurns * 2, 4))
+        .map(m => `${m.isUser ? '我' : 'Gemini'}: ${m.text}`)
+        .join('\n');
+
+    if (!isSilentAuto) {
+        showLoading('SUMMARIZING', '正在将近期对话提炼为 100 字摘要并生成向量...');
+    }
+    try {
+        await createAndPushMemorySlice({
+            rawText: recentText,
+            useAiSummary: true,
+            tags: [],
+            eventName: '对话归档'
+        });
+    } finally {
+        if (!isSilentAuto) hideLoading();
+    }
+}
+
+// 打开单条记忆编辑弹窗
+function openEditSliceModal(slice) {
+    document.getElementById('edit-slice-id').value = slice.id;
+    document.getElementById('edit-slice-text').value = slice.text || '';
+    document.getElementById('edit-slice-date').value = slice.date || getTodayDate();
+    document.getElementById('edit-slice-event').value = slice.event || '日常';
+    document.getElementById('edit-slice-tags').value = (slice.tags || []).join(', ');
+    document.getElementById('edit-slice-modal').classList.add('open');
+}
+
+/* ============================================================================
+   8. 事件绑定与 PWA Manifest 动态注入
+   ============================================================================ */
+function switchViewMode(mode) {
+    const companionPanel = document.getElementById('companion-panel');
+    const tabCompanion = document.getElementById('tab-toggle-companion');
+    const tabChat = document.getElementById('tab-focus-chat');
+    const chatEl = document.getElementById('chat');
+    const bottomDock = document.querySelector('.bottom-dock');
+
+    if (mode === 'companion') {
+        companionPanel.classList.add('active');
+        tabCompanion.classList.add('active');
+        tabChat.classList.remove('active');
+        chatEl.style.display = 'none';
+        if (bottomDock) bottomDock.style.display = 'none';
+    } else {
+        companionPanel.classList.remove('active');
+        tabCompanion.classList.remove('active');
+        tabChat.classList.add('active');
+        chatEl.style.display = '';
+        if (bottomDock) bottomDock.style.display = '';
+        chatEl.scrollTop = chatEl.scrollHeight;
+    }
+}
+
+function bindEvents() {
+    // 顶部模式互斥切换
+    const tabCompanion = document.getElementById('tab-toggle-companion');
+    const tabChat = document.getElementById('tab-focus-chat');
+
+    tabCompanion.addEventListener('click', () => switchViewMode('companion'));
+    tabChat.addEventListener('click', () => switchViewMode('chat'));
+
+    // 分支切换
+    document.getElementById('branch-select').addEventListener('change', async (e) => {
+        state.currentBranch = e.target.value;
+        saveLocalState();
+        await loadBranchFromGithub(state.currentBranch, true);
+        showToast('已切换分支隔间', `当前处于 [${state.currentBranch}] 独立记忆库`, 'info');
+    });
+
+    // 新建分支
+    document.getElementById('btn-new-branch').addEventListener('click', async () => {
+        const name = prompt('请输入新分支隔间名称（建议英文/数字/下划线，如 work_notes 或 story_02）：');
+        if (!name || !name.trim()) return;
+        const cleanName = name.trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '_');
+        if (!state.globalProfile.branchList.includes(cleanName)) {
+            state.globalProfile.branchList.push(cleanName);
+        }
+        state.currentBranch = cleanName;
+        saveLocalState();
+        if (isGithubConfigured()) {
+            try {
+                await githubPutFile('global_profile.json', {
+                    persona: state.globalProfile.persona,
+                    customTags: state.globalProfile.customTags,
+                    branchList: state.globalProfile.branchList,
+                    updatedAt: new Date().toISOString()
+                }, state.globalProfile.sha, `Add branch ${cleanName}`);
+            } catch (e) {}
+        }
+        await loadBranchFromGithub(cleanName, true);
+    });
+
+    // 手动从 GitHub 刷新当前分支
+    document.getElementById('btn-manual-pull').addEventListener('click', async () => {
+        if (!isGithubConfigured()) {
+            showToast('未配置 GitHub', '请先点击右上角 ⚙️ 填写 GitHub PAT 与仓库名', 'warning');
+            return;
+        }
+        await syncGlobalProfileFromGithub();
+        await loadBranchFromGithub(state.currentBranch, true);
+        showToast('同步完成', `已从 GitHub 拉取 [${state.currentBranch}] 最新数据`, 'success');
+    });
+
+    // 伴侣台：一键读取剪贴板
+    document.getElementById('btn-paste-clipboard').addEventListener('click', async () => {
+        try {
+            const clipText = await navigator.clipboard.readText();
+            if (!clipText) {
+                showToast('剪贴板为空', '请先在官方 Gemini App 复制内容', 'warning');
+                return;
+            }
+            document.getElementById('quick-archive-text').value = clipText;
+            showToast('已读取剪贴板', `成功填入 ${clipText.length} 字，点选标签后即可归档`, 'info');
+        } catch (err) {
+            showToast('需要剪贴板权限', '请直接在输入框内长按粘贴', 'warning');
+        }
+    });
+
+    // 伴侣台：新增自定义标签
+    const handleAddCustomTag = async () => {
+        const newTag = prompt('输入要添加到标签池的自定义 #标签 名称（不需要带 # 号）：');
+        if (!newTag || !newTag.trim()) return;
+        const clean = newTag.trim().replace(/^#+/, '');
+        if (!state.globalProfile.customTags.includes(clean)) {
+            state.globalProfile.customTags.push(clean);
+            state.selectedQuickTags.add(clean);
+            saveLocalState();
+            renderTagPickers();
+            if (isGithubConfigured()) {
+                githubPutFile('global_profile.json', {
+                    persona: state.globalProfile.persona,
+                    customTags: state.globalProfile.customTags,
+                    branchList: state.globalProfile.branchList
+                }, state.globalProfile.sha, `Add custom tag ${clean}`).catch(() => {});
+            }
+            showToast('标签已添加', `#${clean} 已加入你的专属标签池`, 'success');
+        }
+    };
+    document.getElementById('btn-add-custom-tag').addEventListener('click', handleAddCustomTag);
+    document.getElementById('btn-manage-tags').addEventListener('click', handleAddCustomTag);
+
+    // 伴侣台：生成向量并归档 GitHub
+    document.getElementById('btn-submit-archive').addEventListener('click', async () => {
+        const rawText = document.getElementById('quick-archive-text').value;
+        const useAi = document.getElementById('chk-ai-summarize').checked;
+        const eventName = document.getElementById('quick-event-input').value;
+        await createAndPushMemorySlice({
+            rawText,
+            useAiSummary: useAi,
+            tags: Array.from(state.selectedQuickTags),
+            eventName
+        });
+    });
+
+    // 伴侣台：唤醒记忆检索
+    const runCompanionRecall = async () => {
+        const query = document.getElementById('quick-recall-query').value.trim();
+        if (!query) {
+            showToast('请输入话题', '输入一句话或关键词来计算向量余弦相似度', 'warning');
+            return;
+        }
+        const resultsEl = document.getElementById('quick-recall-results');
+        resultsEl.innerHTML = `<div style="text-align:center;padding:14px;">正在计算余弦相似度...</div>`;
+        const recalled = await retrieveTopKMemories(query, '', state.config.topK);
+        state.lastRecalledSlices = recalled;
+
+        if (recalled.length === 0) {
+            resultsEl.innerHTML = `<div style="text-align:center;padding:14px;color:var(--color-text-faded);">当前分支暂无记忆切片</div>`;
+            return;
+        }
+
+        resultsEl.innerHTML = recalled.map((r, i) => {
+            const pct = (r.score * 100).toFixed(1) + '%';
+            const tags = (r.slice.tags || []).map(t => `#${escapeHtml(t)}`).join(' ');
+            return `
+                <div class="recall-slice-item">
+                    <div class="recall-meta">
+                        <span>Top-${i + 1} · ${escapeHtml(r.slice.date || '')} (${escapeHtml( tags )})</span>
+                        <span class="score-pill">${pct}</span>
+                    </div>
+                    <div style="color:var(--color-text-dark);">${escapeHtml(r.slice.text)}</div>
+                </div>
+            `;
+        }).join('');
+    };
+    document.getElementById('btn-run-recall').addEventListener('click', runCompanionRecall);
+    document.getElementById('quick-recall-query').addEventListener('keydown', e => {
+        if (e.key === 'Enter') runCompanionRecall();
+    });
+
+    // 伴侣台：一键复制记忆唤醒包回官方 Gemini App
+    document.getElementById('btn-copy-recalled-pack').addEventListener('click', async () => {
+        const query = document.getElementById('quick-recall-query').value.trim();
+        if (state.lastRecalledSlices.length === 0 && getCurrentBranchData().slices.length > 0) {
+            state.lastRecalledSlices = await retrieveTopKMemories(query || '近期重要记忆', '', state.config.topK);
+        }
+        const packText = buildRecallPromptPack(query, state.lastRecalledSlices);
+        await navigator.clipboard.writeText(packText);
+        showToast('记忆唤醒包已复制', '现在切回官方 Gemini App 直接粘贴发送即可！', 'success');
+    });
+
+    // 抽屉开关与搜索
+    const openDrawer = () => {
+        document.getElementById('memory-drawer').classList.add('open');
+        document.getElementById('drawer-backdrop').classList.add('open');
+        renderDrawerSlices();
+    };
+    const closeDrawer = () => {
+        document.getElementById('memory-drawer').classList.remove('open');
+        document.getElementById('drawer-backdrop').classList.remove('open');
+    };
+    document.getElementById('btn-open-drawer').addEventListener('click', openDrawer);
+    document.getElementById('btn-close-drawer').addEventListener('click', closeDrawer);
+    document.getElementById('drawer-backdrop').addEventListener('click', closeDrawer);
+    document.getElementById('drawer-search-input').addEventListener('input', renderDrawerSlices);
+
+    // 导出当前分支 JSON
+    document.getElementById('btn-export-json').addEventListener('click', () => {
+        const dataStr = JSON.stringify(getCurrentBranchData().slices, null, 2);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${state.currentBranch}_memories_${getTodayDate()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('已导出 JSON', `分支 [${state.currentBranch}] 备份已下载`, 'info');
+    });
+
+    // 配置弹窗
+    const settingsModal = document.getElementById('settings-modal');
+    document.getElementById('btn-open-settings').addEventListener('click', () => {
+        document.getElementById('cfg-gemini-key').value = state.config.geminiKey;
+        document.getElementById('cfg-gemini-base').value = state.config.geminiBase;
+        document.getElementById('cfg-chat-model').value = state.config.chatModel;
+        document.getElementById('cfg-embed-model').value = state.config.embedModel;
+        document.getElementById('cfg-top-k').value = state.config.topK;
+        document.getElementById('cfg-auto-turns').value = state.config.autoTurns;
+        document.getElementById('cfg-github-pat').value = state.config.githubPat;
+        document.getElementById('cfg-github-repo').value = state.config.githubRepo;
+        document.getElementById('cfg-global-profile').value = state.globalProfile.persona;
+        settingsModal.classList.add('open');
+    });
+
+    const closeSettings = () => settingsModal.classList.remove('open');
+    document.getElementById('btn-close-settings').addEventListener('click', closeSettings);
+    document.getElementById('btn-cancel-settings').addEventListener('click', closeSettings);
+
+    document.getElementById('btn-test-github').addEventListener('click', async () => {
+        state.config.githubPat = document.getElementById('cfg-github-pat').value.trim();
+        state.config.githubRepo = document.getElementById('cfg-github-repo').value.trim();
+        if (!isGithubConfigured()) {
+            showToast('参数不完整', '请先填写 GitHub PAT 与 Owner/Repo', 'warning');
+            return;
+        }
+        showLoading('CONNECTING GITHUB', '正在验证仓库权限并初始化防串线目录...');
+        try {
+            await syncGlobalProfileFromGithub();
+            await loadBranchFromGithub(state.currentBranch, false);
+            showToast('GitHub 连接成功', '已自动就绪 global_profile.json 与分支目录', 'success');
+        } catch (err) {
+            showToast('连接失败', err.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    });
+
+    document.getElementById('btn-save-settings').addEventListener('click', async () => {
+        state.config.geminiKey = document.getElementById('cfg-gemini-key').value.trim();
+        state.config.geminiBase = document.getElementById('cfg-gemini-base').value.trim() || 'https://generativelanguage.googleapis.com';
+        state.config.chatModel = document.getElementById('cfg-chat-model').value.trim() || 'gemini-2.5-flash';
+        state.config.embedModel = document.getElementById('cfg-embed-model').value.trim() || 'text-embedding-004';
+        state.config.topK = Math.max(1, parseInt(document.getElementById('cfg-top-k').value, 10) || 5);
+        state.config.autoTurns = Math.max(2, parseInt(document.getElementById('cfg-auto-turns').value, 10) || 5);
+        state.config.githubPat = document.getElementById('cfg-github-pat').value.trim();
+        state.config.githubRepo = document.getElementById('cfg-github-repo').value.trim();
+        state.globalProfile.persona = document.getElementById('cfg-global-profile').value.trim();
+
+        saveLocalState();
+        closeSettings();
+        renderAllUI();
+
+        if (isGithubConfigured()) {
+            showLoading('SYNCING PROFILE', '正在同步全局底座与当前分支至 GitHub...');
+            try {
+                const newSha = await githubPutFile('global_profile.json', {
+                    persona: state.globalProfile.persona,
+                    customTags: state.globalProfile.customTags,
+                    branchList: state.globalProfile.branchList,
+                    updatedAt: new Date().toISOString()
+                }, state.globalProfile.sha, 'Update global_profile.json');
+                state.globalProfile.sha = newSha;
+                await loadBranchFromGithub(state.currentBranch, false);
+                showToast('配置已保存并同步', '本地配置与 GitHub 仓库已同步更新', 'success');
+            } catch (e) {
+                showToast('本地已保存', `GitHub 同步提示: ${e.message}`, 'warning');
+            } finally {
+                hideLoading();
+            }
+        } else {
+            showToast('配置已保存在本地', '随时可开始管理记忆库', 'success');
+        }
+    });
+
+    // 编辑单条记忆切片保存
+    const editModal = document.getElementById('edit-slice-modal');
+    const closeEditModal = () => editModal.classList.remove('open');
+    document.getElementById('btn-close-edit-slice').addEventListener('click', closeEditModal);
+    document.getElementById('btn-cancel-edit-slice').addEventListener('click', closeEditModal);
+
+    document.getElementById('btn-save-edit-slice').addEventListener('click', async () => {
+        const id = document.getElementById('edit-slice-id').value;
+        const newText = document.getElementById('edit-slice-text').value.trim();
+        const newDate = document.getElementById('edit-slice-date').value.trim();
+        const newEvent = document.getElementById('edit-slice-event').value.trim();
+        const newTags = document.getElementById('edit-slice-tags').value
+            .split(/[,，]/)
+            .map(t => t.trim().replace(/^#+/, ''))
+            .filter(Boolean);
+
+        if (!newText) return;
+        closeEditModal();
+        showLoading('UPDATING SLICE', '正在重新计算切片向量并同步至 GitHub...');
+        try {
+            const branchData = getCurrentBranchData();
+            const target = branchData.slices.find(s => s.id === id);
+            if (target) {
+                target.text = newText;
+                target.date = newDate || getTodayDate();
+                target.event = newEvent || '日常';
+                target.tags = newTags.length ? newTags : ['日常点滴'];
+                target.vector = await getEmbeddingVector(`${target.event} ${target.tags.join(' ')} ${target.text}`);
+                await pushCurrentBranchToGithub('Edit memory slice');
+            }
+        } catch (err) {
+            showToast('更新失败', err.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    });
+
+    // 底部聊天控制
+    document.getElementById('chk-auto-archive').addEventListener('change', e => {
+        state.config.autoArchiveEnabled = e.target.checked;
+        saveLocalState();
+        showToast(
+            e.target.checked ? '已开启自动总结入库' : '已关闭自动总结入库',
+            e.target.checked ? `每满 ${state.config.autoTurns} 轮对话将自动提炼摘要存入 GitHub` : '你可以随时手动点击提取记忆',
+            'info'
+        );
+    });
+
+    document.getElementById('btn-extract-round').addEventListener('click', () => triggerRoundMemoryExtraction(false));
+
+    document.getElementById('btn-clear-chat').addEventListener('click', () => {
+        if (!confirm('确定清空当前屏幕上的对话记录吗？（已归档入 GitHub 的记忆切片不会受影响）')) return;
+        saveChatHistory([]);
+        renderChatMessages();
+        showToast('屏幕对话已清空', '长期记忆库完好保留在抽屉与 GitHub 中', 'info');
+    });
+
+    document.getElementById('btn-send-msg').addEventListener('click', handleSendChatMessage);
+    document.getElementById('user-input').addEventListener('keydown', e => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendChatMessage();
+        }
+    });
+}
+
+// 动态注入单文件 PWA Manifest，支持手机浏览器「添加到主屏幕」全屏独立运行
+function injectPWAManifest() {
+    const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" rx="26" fill="#eee6de"/><rect x="14" y="14" width="92" height="92" rx="16" fill="#fdfbf7" stroke="#8c7b70" stroke-width="4"/><text x="60" y="74" font-family="serif" font-size="48" text-anchor="middle" fill="#5d4e46">𝔖</text></svg>`;
+    const iconDataUrl = `data:image/svg+xml;base64,${utf8ToBase64(svgIcon)}`;
+
+    const manifest = {
+        name: '信笺 · 初晴 | Gemini 向量长期记忆库',
+        short_name: '初晴记忆库',
+        start_url: '.',
+        display: 'standalone',
+        background_color: '#eee6de',
+        theme_color: '#eee6de',
+        icons: [{ src: iconDataUrl, sizes: '192x192 512x512', type: 'image/svg+xml' }]
+    };
+    const link = document.createElement('link');
+    link.rel = 'manifest';
+    link.href = `data:application/manifest+json;charset=utf-8,${encodeURIComponent(JSON.stringify(manifest))}`;
+    document.head.appendChild(link);
+}
+
+// 启动初始化
+(async function initApp() {
+    injectPWAManifest();
+    loadLocalState();
+    bindEvents();
+    renderAllUI();
+    switchViewMode('chat');
+
+    if (isGithubConfigured()) {
+        await syncGlobalProfileFromGithub();
+        await loadBranchFromGithub(state.currentBranch, false);
+    }
+})();
+</script>
+</body>
+</html>
