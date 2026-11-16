@@ -1,17 +1,75 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.0.0
+// @version      1.1.0
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_xmlhttpRequest
+// @connect      api.github.com
+// @connect      generativelanguage.googleapis.com
+// @connect      *
 // @run-at       document-idle
 // ==/UserScript==
 
 (function () {
     'use strict';
+
+    // 突破 Gemini 官网 Trusted Types 安全策略限制
+    let trustedPolicy = null;
+    if (window.trustedTypes && window.trustedTypes.createPolicy) {
+        try {
+            trustedPolicy = window.trustedTypes.createPolicy('chuqing-rag-policy', {
+                createHTML: (s) => s
+            });
+        } catch (e) {
+            if (window.trustedTypes.defaultPolicy) {
+                trustedPolicy = window.trustedTypes.defaultPolicy;
+            }
+        }
+    }
+
+    function setSafeHTML(el, htmlStr) {
+        if (trustedPolicy) {
+            el.innerHTML = trustedPolicy.createHTML(htmlStr);
+        } else {
+            el.innerHTML = htmlStr;
+        }
+    }
+
+    function escapeHtml(str = '') {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    // 突破官网 CSP 限制的跨域请求封装
+    function safeFetch(url, options = {}) {
+        if (typeof GM_xmlhttpRequest === 'function') {
+            return new Promise((resolve, reject) => {
+                GM_xmlhttpRequest({
+                    method: options.method || 'GET',
+                    url: url,
+                    headers: options.headers || {},
+                    data: options.body || undefined,
+                    onload: (res) => {
+                        resolve({
+                            ok: res.status >= 200 && res.status < 300,
+                            status: res.status,
+                            text: async () => res.responseText,
+                            json: async () => JSON.parse(res.responseText)
+                        });
+                    },
+                    onerror: (err) => reject(new Error(err?.error || 'Network error')),
+                    ontimeout: () => reject(new Error('Request timeout'))
+                });
+            });
+        }
+        return fetch(url, options);
+    }
 
     const STORAGE_KEY = 'chuqing_official_sync_cfg_v1';
     const DEFAULT_TAGS = ['核心设定', '日常点滴', '重要事件', '偏好习惯', '约定待办', '剧情进度', '感情升温'];
@@ -67,7 +125,9 @@
        1. 注入「信笺 · 初晴」样式与悬浮面板、电影票打孔 Toast
        ======================================================================== */
     function injectStyles() {
+        if (document.getElementById('cq-chuqing-style')) return;
         const style = document.createElement('style');
+        style.id = 'cq-chuqing-style';
         style.textContent = `
             #cq-toast-wrap {
                 position: fixed;
@@ -285,7 +345,7 @@
         }
         const el = document.createElement('div');
         el.className = `cq-ticket-toast ${type}`;
-        el.innerHTML = `<div style="font-weight:700;margin-bottom:2px;">${title}</div><div style="opacity:0.85;">${msg}</div>`;
+        setSafeHTML(el, `<div style="font-weight:700;margin-bottom:2px;">${escapeHtml(title)}</div><div style="opacity:0.85;">${escapeHtml(msg)}</div>`);
         wrap.appendChild(el);
         setTimeout(() => el.remove(), 3500);
     }
@@ -396,7 +456,7 @@
         const models = [state.embedModel || 'text-embedding-004', 'gemini-embedding-001'];
         for (const m of models) {
             try {
-                const res = await fetch(`${base}/v1beta/models/${m}:embedContent?key=${encodeURIComponent(state.geminiKey.trim())}`, {
+                const res = await safeFetch(`${base}/v1beta/models/${m}:embedContent?key=${encodeURIComponent(state.geminiKey.trim())}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ model: `models/${m}`, content: { parts: [{ text }] } })
@@ -426,7 +486,7 @@
     }
 
     async function githubGetFile(path) {
-        const res = await fetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/${encodeGithubPath(path)}?t=${Date.now()}`, {
+        const res = await safeFetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/${encodeGithubPath(path)}?t=${Date.now()}`, {
             headers: {
                 'Authorization': `Bearer ${state.githubPat.trim()}`,
                 'Accept': 'application/vnd.github+json'
@@ -446,7 +506,7 @@
         }
         const body = { message, content: utf8ToBase64(JSON.stringify(jsonData, null, 2)) };
         if (latestSha) body.sha = latestSha;
-        const res = await fetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/${encodeGithubPath(path)}`, {
+        const res = await safeFetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/${encodeGithubPath(path)}`, {
             method: 'PUT',
             headers: {
                 'Authorization': `Bearer ${state.githubPat.trim()}`,
@@ -464,7 +524,7 @@
         const base = (state.geminiBase || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
         const model = state.chatModel || 'gemini-2.5-flash';
         const sys = `请将以下对话提炼为 100~180 字的精简长期记忆总结，并从 [${state.customTags.join('、')}] 中选 2~3 个标签。只输出 JSON: {"text":"总结内容","tags":["标签1"]}`;
-        const res = await fetch(`${base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(state.geminiKey.trim())}`, {
+        const res = await safeFetch(`${base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(state.geminiKey.trim())}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -486,17 +546,18 @@
        4. 构建悬浮岛 UI 与交互事件
        ======================================================================== */
     function createUI() {
+        if (!document.body || document.getElementById('cq-floating-pill')) return;
         loadConfig();
         injectStyles();
 
         const pill = document.createElement('div');
         pill.id = 'cq-floating-pill';
-        pill.innerHTML = `<span>✉️ 初晴记忆库</span><span id="cq-pill-branch" style="font-size:11px;opacity:0.75;">[${state.currentBranch}]</span>`;
+        setSafeHTML(pill, `<span>✉️ 初晴记忆库</span><span id="cq-pill-branch" style="font-size:11px;opacity:0.75;">[${escapeHtml(state.currentBranch)}]</span>`);
         document.body.appendChild(pill);
 
         const panel = document.createElement('div');
         panel.id = 'cq-sync-panel';
-        panel.innerHTML = `
+        setSafeHTML(panel, `
             <div class="cq-row" style="border-bottom:1px solid #bfaea0;padding-bottom:8px;">
                 <strong style="font-size:14.5px;">✉️ 初晴 · 官网免复制记忆助手</strong>
                 <button class="cq-btn" id="cq-btn-close" style="height:24px;padding:0 8px;">收起</button>
@@ -549,12 +610,12 @@
                     <button class="cq-btn primary" id="cq-btn-save-cfg">💾 保存连接配置</button>
                 </div>
             </details>
-        `;
+        `);
         document.body.appendChild(panel);
 
         function renderPanelState() {
             const sel = document.getElementById('cq-branch-select');
-            sel.innerHTML = '';
+            setSafeHTML(sel, '');
             state.branchList.forEach(b => {
                 const opt = document.createElement('option');
                 opt.value = b;
@@ -565,7 +626,7 @@
             document.getElementById('cq-pill-branch').textContent = `[${state.currentBranch}]`;
 
             const tagBox = document.getElementById('cq-tag-container');
-            tagBox.innerHTML = '';
+            setSafeHTML(tagBox, '');
             state.customTags.forEach(t => {
                 const span = document.createElement('span');
                 span.className = `cq-tag ${state.selectedTags.has(t) ? 'active' : ''}`;
@@ -732,5 +793,10 @@
         });
     }
 
-    setTimeout(createUI, 1500);
+    setTimeout(createUI, 1200);
+    setInterval(() => {
+        if (!document.getElementById('cq-floating-pill')) {
+            createUI();
+        }
+    }, 2500);
 })();
