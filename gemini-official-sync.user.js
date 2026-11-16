@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.3.1
+// @version      1.4.0
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -91,6 +91,8 @@
         geminiBase: 'https://generativelanguage.googleapis.com',
         chatModel: 'gemini-2.5-flash',
         embedModel: 'text-embedding-004',
+        topK: 5,
+        minScore: 0.38,
         fetchedModels: {},
         githubPat: '',
         githubRepo: '',
@@ -120,6 +122,8 @@
             geminiBase: state.geminiBase,
             chatModel: state.chatModel,
             embedModel: state.embedModel,
+            topK: state.topK,
+            minScore: state.minScore,
             fetchedModels: state.fetchedModels,
             githubPat: state.githubPat,
             githubRepo: state.githubRepo,
@@ -535,6 +539,37 @@
         return (na && nb) ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
     }
 
+    function lexicalOverlapScore(query, slice) {
+        const q = (query || '').trim().toLowerCase();
+        if (!q) return 0;
+        const target = `${slice.text || ''} ${(slice.tags || []).join(' ')} ${slice.event || ''}`.toLowerCase();
+        let hits = 0;
+        for (const ch of q) {
+            if (ch.trim() && target.includes(ch)) hits++;
+        }
+        return (hits / Math.max(q.length, 1)) * 0.25;
+    }
+
+    async function githubListBranchFiles() {
+        if (!state.githubPat || !state.githubRepo) return [];
+        try {
+            const res = await safeFetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/branches?t=${Date.now()}`, {
+                headers: {
+                    'Authorization': `Bearer ${state.githubPat.trim()}`,
+                    'Accept': 'application/vnd.github+json'
+                }
+            });
+            if (!res.ok) return [];
+            const items = await res.json();
+            if (!Array.isArray(items)) return [];
+            return items
+                .filter(item => item.type === 'file' && typeof item.name === 'string' && item.name.endsWith('.json'))
+                .map(item => item.name.slice(0, -5));
+        } catch (e) {
+            return [];
+        }
+    }
+
     function encodeGithubPath(path) {
         return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
     }
@@ -677,6 +712,17 @@
                     <input type="text" id="cq-recall-input" class="cq-input" placeholder="留空则直接根据下方官网输入框草稿检索...">
                     <button class="cq-btn bot" id="cq-btn-recall-inject" style="flex-shrink:0;">🔮 唤醒并填入</button>
                 </div>
+                <div class="cq-row" style="font-size:11.5px;color:#556677;margin-top:2px;">
+                    <label style="display:inline-flex;align-items:center;gap:4px;">
+                        <span>最多召回:</span>
+                        <input type="number" id="cq-recall-topk" class="cq-input" min="1" max="20" style="width:54px;padding:2px 6px;height:24px;font-size:11.5px;">
+                        <span>条</span>
+                    </label>
+                    <label style="display:inline-flex;align-items:center;gap:4px;">
+                        <span>最低相关度:</span>
+                        <input type="number" id="cq-recall-minscore" class="cq-input" min="0" max="0.95" step="0.02" style="width:62px;padding:2px 6px;height:24px;font-size:11.5px;" title="过滤掉低于该分数的无关记忆，默认 0.38">
+                    </label>
+                </div>
             </div>
 
             <!-- 折叠配置区 -->
@@ -770,6 +816,8 @@
             populateUserscriptModels(prov, null, null, state.chatModel, state.embedModel);
             document.getElementById('cq-cfg-pat').value = state.githubPat;
             document.getElementById('cq-cfg-repo').value = state.githubRepo;
+            document.getElementById('cq-recall-topk').value = state.topK || 5;
+            document.getElementById('cq-recall-minscore').value = (typeof state.minScore === 'number') ? state.minScore : 0.38;
         }
 
         renderPanelState();
@@ -870,10 +918,15 @@
                 return;
             }
             try {
-                const remote = await githubGetFile('global_profile.json');
+                const [remote, discovered] = await Promise.all([
+                    githubGetFile('global_profile.json'),
+                    githubListBranchFiles()
+                ]);
                 if (remote?.json) {
-                    if (Array.isArray(remote.json.branchList) && remote.json.branchList.length > 0) {
-                        state.branchList = remote.json.branchList;
+                    const remoteBranches = Array.isArray(remote.json.branchList) ? remote.json.branchList : state.branchList;
+                    const merged = Array.from(new Set([...remoteBranches, ...discovered]));
+                    if (merged.length > 0) {
+                        state.branchList = merged;
                         if (!state.branchList.includes(state.currentBranch)) {
                             state.currentBranch = state.branchList[0];
                         }
@@ -890,6 +943,18 @@
                 if (!silent) showToast('同步失败', err.message, 'err');
             }
         }
+
+        document.getElementById('cq-recall-topk').addEventListener('change', e => {
+            state.topK = Math.max(1, Math.min(20, parseInt(e.target.value, 10) || 5));
+            e.target.value = state.topK;
+            saveConfig();
+        });
+        document.getElementById('cq-recall-minscore').addEventListener('change', e => {
+            const v = parseFloat(e.target.value);
+            state.minScore = Number.isFinite(v) ? Math.min(0.95, Math.max(0, v)) : 0.38;
+            e.target.value = state.minScore;
+            saveConfig();
+        });
 
         document.getElementById('cq-btn-save-cfg').addEventListener('click', async () => {
             state.apiProvider = document.getElementById('cq-cfg-provider').value || 'gemini';
@@ -972,13 +1037,18 @@
             }
         });
 
-        // 核心动作 2：一键从 GitHub 检索 Top-5 记忆并直接塞进官网输入框
+        // 核心动作 2：一键从 GitHub 检索 Top-K 记忆并直接塞进官网输入框（余弦 + 关键词加分 + 阈值过滤）
         document.getElementById('cq-btn-recall-inject').addEventListener('click', async () => {
             if (!state.githubPat || !state.githubRepo) {
                 showToast('未配置 GitHub 仓库', '请先展开下方 ⚙️ 填写 GitHub PAT 与仓库名', 'warn');
                 return;
             }
-            const query = document.getElementById('cq-recall-input').value.trim() || getOfficialInputDraft() || '近期重要记忆';
+            const userQuery = document.getElementById('cq-recall-input').value.trim() || getOfficialInputDraft();
+            const query = userQuery || '近期重要记忆';
+            const topK = Math.max(1, parseInt(document.getElementById('cq-recall-topk').value, 10) || state.topK || 5);
+            const rawMinScore = parseFloat(document.getElementById('cq-recall-minscore').value);
+            const minScore = userQuery ? (Number.isFinite(rawMinScore) ? rawMinScore : 0.38) : 0;
+
             const btn = document.getElementById('cq-btn-recall-inject');
             btn.disabled = true;
             btn.textContent = '检索中...';
@@ -991,14 +1061,27 @@
                     return;
                 }
                 const qVec = await getEmbeddingVector(query);
-                const scored = slices.map(s => ({
-                    slice: s,
-                    score: cosineSimilarity(qVec, s.vector || [])
-                })).sort((a, b) => b.score - a.score).slice(0, 5);
+                const cleanQ = query.trim().toLowerCase();
+                const scored = slices.map(s => {
+                    const cos = cosineSimilarity(qVec, s.vector || []);
+                    const textHay = `${s.text || ''} ${(s.tags || []).join(' ')} ${s.event || ''}`.toLowerCase();
+                    const exactBonus = (cleanQ.length >= 2 && textHay.includes(cleanQ)) ? 0.25 : 0;
+                    const lex = lexicalOverlapScore(query, s);
+                    const score = cos + (exactBonus || lex * 0.5);
+                    return { slice: s, score };
+                })
+                .filter(item => minScore <= 0 || item.score >= minScore)
+                .sort((a, b) => b.score - a.score)
+                .slice(0, topK);
+
+                if (scored.length === 0) {
+                    showToast('未命中相关记忆', `相关度均低于 ${(minScore * 100).toFixed(0)}%，已过滤无关切片`, 'warn');
+                    return;
+                }
 
                 const header = `【✉️ 初晴 · 唤醒记忆档案 (${state.currentBranch})】\n` +
                     (state.persona ? `▸ 核心设定：${state.persona}\n` : '') +
-                    scored.map((r, i) => `${i + 1}. [${r.slice.date} | #${(r.slice.tags || []).join(' #')}]: ${r.slice.text}`).join('\n') +
+                    scored.map((r, i) => `${i + 1}. [${r.slice.date} | #${(r.slice.tags || []).join(' #')} | 相关度 ${(r.score * 100).toFixed(0)}%]: ${r.slice.text}`).join('\n') +
                     `\n---\n`;
 
                 const ok = fillOfficialGeminiInput(header);
