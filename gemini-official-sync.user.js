@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.4.1
+// @version      1.5.0
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -85,11 +85,13 @@
     const PRESET_MODELS = {
         gemini: {
             chat: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-            embed: ['text-embedding-004', 'gemini-embedding-001']
+            embed: ['text-embedding-004', 'gemini-embedding-001'],
+            rerank: ['BAAI/bge-reranker-v2-m3']
         },
         siliconflow: {
             chat: ['Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'THUDM/glm-4-9b-chat'],
-            embed: ['BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'netease-youdao/bce-embedding-base_v1', 'Pro/BAAI/bge-m3']
+            embed: ['BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'netease-youdao/bce-embedding-base_v1', 'Pro/BAAI/bge-m3'],
+            rerank: ['BAAI/bge-reranker-v2-m3', 'netease-youdao/bce-reranker-base_v1', 'Pro/BAAI/bge-reranker-v2-m3']
         }
     };
 
@@ -99,6 +101,8 @@
         geminiBase: 'https://generativelanguage.googleapis.com',
         chatModel: 'gemini-2.5-flash',
         embedModel: 'text-embedding-004',
+        rerankEnabled: false,
+        rerankModel: 'BAAI/bge-reranker-v2-m3',
         topK: 5,
         minScore: 0.38,
         fetchedModels: {},
@@ -130,6 +134,8 @@
             geminiBase: state.geminiBase,
             chatModel: state.chatModel,
             embedModel: state.embedModel,
+            rerankEnabled: state.rerankEnabled,
+            rerankModel: state.rerankModel,
             topK: state.topK,
             minScore: state.minScore,
             fetchedModels: state.fetchedModels,
@@ -558,6 +564,47 @@
         return (hits / Math.max(q.length, 1)) * 0.25;
     }
 
+    async function rerankCandidates(queryText, coarseItems, topK, threshold) {
+        const key = state.geminiKey.trim();
+        if (!key || !isSiliconFlowOrOpenAI() || coarseItems.length <= 1) return null;
+        const model = (state.rerankModel || '').trim() || 'BAAI/bge-reranker-v2-m3';
+        try {
+            const docs = coarseItems.map(c => {
+                const tagsStr = (c.slice.tags || []).map(t => `#${t}`).join(' ');
+                return `${c.slice.date ? '[' + c.slice.date + '] ' : ''}${tagsStr ? tagsStr + ' ' : ''}${c.slice.text || ''}`;
+            });
+            const res = await safeFetch(`${getOpenAIBaseUrl()}/rerank`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${key}`
+                },
+                body: JSON.stringify({
+                    model,
+                    query: queryText,
+                    documents: docs,
+                    top_n: Math.min(topK, docs.length),
+                    return_documents: false
+                })
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (!Array.isArray(data.results) || data.results.length === 0) return null;
+            return data.results
+                .map(r => {
+                    const orig = coarseItems[r.index];
+                    if (!orig) return null;
+                    const finalScore = Number(r.relevance_score || 0) + (orig.exactBonus > 0 ? 0.1 : 0);
+                    return { slice: orig.slice, score: finalScore };
+                })
+                .filter(item => item && (threshold <= 0 || item.score >= threshold))
+                .sort((a, b) => b.score - a.score)
+                .slice(0, topK);
+        } catch (e) {
+            return null;
+        }
+    }
+
     async function githubListBranchFiles() {
         if (!state.githubPat || !state.githubRepo) return [];
         try {
@@ -753,6 +800,14 @@
                         <span style="font-size:11px;color:#5d4e46;font-weight:700;">向量模型:</span>
                         <select id="cq-cfg-embed-model" class="cq-select"></select>
                     </div>
+                    <label style="font-size:11.5px;display:flex;align-items:center;gap:5px;cursor:pointer;color:#5d4e46;margin-top:2px;">
+                        <input type="checkbox" id="cq-cfg-rerank-enabled">
+                        <span>开启 Rerank 二次精排 (硅基流动，默认关)</span>
+                    </label>
+                    <div style="display:flex;flex-direction:column;gap:3px;">
+                        <span style="font-size:11px;color:#5d4e46;font-weight:700;">重排模型 (Rerank):</span>
+                        <select id="cq-cfg-rerank-model" class="cq-select"></select>
+                    </div>
                     <input type="password" id="cq-cfg-pat" class="cq-input" placeholder="GitHub Token (ghp_...)">
                     <input type="text" id="cq-cfg-repo" class="cq-input" placeholder="GitHub 仓库 (如 yourname/gemini-memory)">
                     <button class="cq-btn primary" id="cq-btn-save-cfg">💾 保存连接配置</button>
@@ -761,17 +816,20 @@
         `);
         document.body.appendChild(panel);
 
-        function populateUserscriptModels(provider, customChat = null, customEmbed = null, selChat = '', selEmbed = '') {
+        function populateUserscriptModels(provider, customChat = null, customEmbed = null, selChat = '', selEmbed = '', customRerank = null, selRerank = '') {
             const pKey = provider === 'siliconflow' ? 'siliconflow' : 'gemini';
             const cached = (state.fetchedModels && state.fetchedModels[pKey]) || {};
             const presets = PRESET_MODELS[pKey];
             const chatList = Array.from(new Set([...(customChat || cached.chat || presets.chat)]));
             const embedList = Array.from(new Set([...(customEmbed || cached.embed || presets.embed)]));
+            const rerankList = Array.from(new Set([...(customRerank || cached.rerank || presets.rerank || PRESET_MODELS.siliconflow.rerank)]));
             if (selChat && !chatList.includes(selChat)) chatList.unshift(selChat);
             if (selEmbed && !embedList.includes(selEmbed)) embedList.unshift(selEmbed);
+            if (selRerank && !rerankList.includes(selRerank)) rerankList.unshift(selRerank);
 
             const chatSel = document.getElementById('cq-cfg-chat-model');
             const embedSel = document.getElementById('cq-cfg-embed-model');
+            const rerankSel = document.getElementById('cq-cfg-rerank-model');
             setSafeHTML(chatSel, '');
             chatList.forEach(m => {
                 const o = document.createElement('option');
@@ -789,6 +847,15 @@
                 embedSel.appendChild(o);
             });
             embedSel.value = (selEmbed && embedList.includes(selEmbed)) ? selEmbed : (embedList[0] || '');
+
+            setSafeHTML(rerankSel, '');
+            rerankList.forEach(m => {
+                const o = document.createElement('option');
+                o.value = m;
+                o.textContent = m;
+                rerankSel.appendChild(o);
+            });
+            rerankSel.value = (selRerank && rerankList.includes(selRerank)) ? selRerank : (rerankList[0] || '');
         }
 
         function renderPanelState() {
@@ -821,7 +888,8 @@
             const prov = state.apiProvider || 'gemini';
             document.getElementById('cq-cfg-provider').value = prov;
             document.getElementById('cq-cfg-key').value = state.geminiKey;
-            populateUserscriptModels(prov, null, null, state.chatModel, state.embedModel);
+            populateUserscriptModels(prov, null, null, state.chatModel, state.embedModel, null, state.rerankModel);
+            document.getElementById('cq-cfg-rerank-enabled').checked = Boolean(state.rerankEnabled);
             document.getElementById('cq-cfg-pat').value = state.githubPat;
             document.getElementById('cq-cfg-repo').value = state.githubRepo;
             document.getElementById('cq-recall-topk').value = state.topK || 5;
@@ -834,9 +902,9 @@
         document.getElementById('cq-cfg-provider').addEventListener('change', e => {
             const p = e.target.value;
             if (p === 'siliconflow') {
-                populateUserscriptModels('siliconflow', null, null, 'Qwen/Qwen2.5-7B-Instruct', 'BAAI/bge-m3');
+                populateUserscriptModels('siliconflow', null, null, 'Qwen/Qwen2.5-7B-Instruct', 'BAAI/bge-m3', null, 'BAAI/bge-reranker-v2-m3');
             } else {
-                populateUserscriptModels('gemini', null, null, 'gemini-2.5-flash', 'text-embedding-004');
+                populateUserscriptModels('gemini', null, null, 'gemini-2.5-flash', 'text-embedding-004', null, 'BAAI/bge-reranker-v2-m3');
             }
         });
 
@@ -853,25 +921,29 @@
             try {
                 let chatModels = [];
                 let embedModels = [];
+                let rerankModels = [];
                 const useOpenAI = provider === 'siliconflow' || key.startsWith('sk-');
                 if (useOpenAI) {
                     const v1Base = (!state.geminiBase || state.geminiBase.includes('generativelanguage.googleapis.com'))
                         ? 'https://api.siliconflow.cn/v1'
                         : (state.geminiBase.replace(/\/+$/, '').endsWith('/v1') ? state.geminiBase.replace(/\/+$/, '') : `${state.geminiBase.replace(/\/+$/, '')}/v1`);
                     if (v1Base.includes('siliconflow.cn')) {
-                        const [cRes, eRes] = await Promise.all([
+                        const [cRes, eRes, rRes] = await Promise.all([
                             safeFetch(`${v1Base}/models?sub_type=chat`, { headers: { 'Authorization': `Bearer ${key}` } }),
-                            safeFetch(`${v1Base}/models?sub_type=embedding`, { headers: { 'Authorization': `Bearer ${key}` } })
+                            safeFetch(`${v1Base}/models?sub_type=embedding`, { headers: { 'Authorization': `Bearer ${key}` } }),
+                            safeFetch(`${v1Base}/models?sub_type=reranker`, { headers: { 'Authorization': `Bearer ${key}` } })
                         ]);
                         if (cRes.ok) chatModels = ((await cRes.json()).data || []).map(m => m.id).filter(Boolean);
                         if (eRes.ok) embedModels = ((await eRes.json()).data || []).map(m => m.id).filter(Boolean);
+                        if (rRes.ok) rerankModels = ((await rRes.json()).data || []).map(m => m.id).filter(Boolean);
                     }
                     if (chatModels.length === 0 && embedModels.length === 0) {
                         const res = await safeFetch(`${v1Base}/models`, { headers: { 'Authorization': `Bearer ${key}` } });
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const ids = ((await res.json()).data || []).map(m => m.id).filter(Boolean);
-                        embedModels = ids.filter(id => /embed|bge-|bce-embedding|m3e|jina-embeddings/i.test(id));
-                        chatModels = ids.filter(id => !/embed|reranker|flux|stable-diffusion|whisper|tts|fishaudio|cosyvoice|sensevoice|video/i.test(id));
+                        embedModels = ids.filter(id => /embed|bge-(?!rerank)|bce-embedding|m3e|jina-embeddings/i.test(id));
+                        rerankModels = ids.filter(id => /rerank/i.test(id));
+                        chatModels = ids.filter(id => !/embed|rerank|flux|stable-diffusion|whisper|tts|fishaudio|cosyvoice|sensevoice|video/i.test(id));
                     }
                 } else {
                     const gBase = (state.geminiBase && !state.geminiBase.includes('siliconflow'))
@@ -891,11 +963,20 @@
                 const pKey = useOpenAI ? 'siliconflow' : 'gemini';
                 if (!chatModels.length) chatModels = PRESET_MODELS[pKey].chat;
                 if (!embedModels.length) embedModels = PRESET_MODELS[pKey].embed;
+                if (!rerankModels.length) rerankModels = PRESET_MODELS[pKey].rerank;
                 state.fetchedModels = state.fetchedModels || {};
-                state.fetchedModels[pKey] = { chat: chatModels, embed: embedModels };
+                state.fetchedModels[pKey] = { chat: chatModels, embed: embedModels, rerank: rerankModels };
                 saveConfig();
-                populateUserscriptModels(pKey, chatModels, embedModels, document.getElementById('cq-cfg-chat-model').value, document.getElementById('cq-cfg-embed-model').value);
-                showToast('模型拉取成功', `共 ${chatModels.length} 个总结模型 / ${embedModels.length} 个向量模型`);
+                populateUserscriptModels(
+                    pKey,
+                    chatModels,
+                    embedModels,
+                    document.getElementById('cq-cfg-chat-model').value,
+                    document.getElementById('cq-cfg-embed-model').value,
+                    rerankModels,
+                    document.getElementById('cq-cfg-rerank-model').value
+                );
+                showToast('模型拉取成功', `共 ${chatModels.length} 个总结 / ${embedModels.length} 个向量 / ${rerankModels.length} 个重排模型`);
             } catch (err) {
                 showToast('拉取模型失败', err.message, 'err');
             } finally {
@@ -969,6 +1050,8 @@
             state.geminiKey = document.getElementById('cq-cfg-key').value.trim();
             state.chatModel = document.getElementById('cq-cfg-chat-model').value || (state.apiProvider === 'siliconflow' ? 'Qwen/Qwen2.5-7B-Instruct' : 'gemini-2.5-flash');
             state.embedModel = document.getElementById('cq-cfg-embed-model').value || (state.apiProvider === 'siliconflow' ? 'BAAI/bge-m3' : 'text-embedding-004');
+            state.rerankEnabled = document.getElementById('cq-cfg-rerank-enabled').checked;
+            state.rerankModel = document.getElementById('cq-cfg-rerank-model').value || 'BAAI/bge-reranker-v2-m3';
             if (state.apiProvider === 'siliconflow') {
                 if (!state.geminiBase || state.geminiBase.includes('generativelanguage.googleapis.com')) {
                     state.geminiBase = 'https://api.siliconflow.cn/v1';
@@ -1070,17 +1153,26 @@
                 }
                 const qVec = await getEmbeddingVector(query);
                 const cleanQ = query.trim().toLowerCase();
-                const scored = slices.map(s => {
+                const scoredAll = slices.map(s => {
                     const cos = cosineSimilarity(qVec, s.vector || []);
                     const textHay = `${s.text || ''} ${(s.tags || []).join(' ')} ${s.event || ''}`.toLowerCase();
                     const exactBonus = (cleanQ.length >= 2 && textHay.includes(cleanQ)) ? 0.25 : 0;
                     const lex = lexicalOverlapScore(query, s);
                     const score = cos + (exactBonus || lex * 0.5);
-                    return { slice: s, score };
-                })
-                .filter(item => minScore <= 0 || item.score >= minScore)
-                .sort((a, b) => b.score - a.score)
-                .slice(0, topK);
+                    return { slice: s, score, exactBonus };
+                }).sort((a, b) => b.score - a.score);
+
+                let scored = null;
+                if (state.rerankEnabled && isSiliconFlowOrOpenAI() && scoredAll.length > 1) {
+                    const coarsePool = scoredAll.slice(0, Math.max(topK * 3, 15));
+                    scored = await rerankCandidates(query, coarsePool, topK, minScore);
+                }
+                if (scored === null) {
+                    scored = scoredAll
+                        .filter(item => minScore <= 0 || item.score >= minScore)
+                        .slice(0, topK)
+                        .map(({ slice, score }) => ({ slice, score }));
+                }
 
                 if (scored.length === 0) {
                     showToast('未命中相关记忆', `相关度均低于 ${(minScore * 100).toFixed(0)}%，已过滤无关切片`, 'warn');

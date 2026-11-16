@@ -1710,6 +1710,20 @@
                 </div>
             </div>
 
+            <div class="form-grid-2" style="align-items:end;">
+                <div class="form-group">
+                    <label class="form-label" style="justify-content:flex-start;gap:6px;cursor:pointer;">
+                        <input type="checkbox" id="cfg-rerank-enabled">
+                        <span>开启 Rerank 二次精排 (默认关)</span>
+                    </label>
+                    <span class="form-hint">需配合硅基流动 Key 使用；开启后先初筛前 15 条，再用重排模型精挑 Top-K。</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">重排模型 (Rerank)</label>
+                    <select id="cfg-rerank-model" class="chuqing-input"></select>
+                </div>
+            </div>
+
             <hr style="border:none;border-top:1px dashed var(--color-border);margin:4px 0;">
 
             <div class="form-group">
@@ -1869,11 +1883,13 @@ const STORAGE_KEYS = {
 const PRESET_MODELS = {
     gemini: {
         chat: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-        embed: ['text-embedding-004', 'gemini-embedding-001']
+        embed: ['text-embedding-004', 'gemini-embedding-001'],
+        rerank: ['BAAI/bge-reranker-v2-m3']
     },
     siliconflow: {
         chat: ['Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'THUDM/glm-4-9b-chat'],
-        embed: ['BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'netease-youdao/bce-embedding-base_v1', 'Pro/BAAI/bge-m3']
+        embed: ['BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'netease-youdao/bce-embedding-base_v1', 'Pro/BAAI/bge-m3'],
+        rerank: ['BAAI/bge-reranker-v2-m3', 'netease-youdao/bce-reranker-base_v1', 'Pro/BAAI/bge-reranker-v2-m3']
     }
 };
 
@@ -1887,6 +1903,8 @@ const state = {
         geminiBase: 'https://generativelanguage.googleapis.com',
         chatModel: 'gemini-2.5-flash',
         embedModel: 'text-embedding-004',
+        rerankEnabled: false,
+        rerankModel: 'BAAI/bge-reranker-v2-m3',
         topK: 5,
         minScore: 0.38,
         autoTurns: 5,
@@ -2118,7 +2136,50 @@ function lexicalOverlapScore(query, slice) {
     return (hits / Math.max(q.length, 1)) * 0.25;
 }
 
-// 检索当前分支 Top-K 记忆切片（余弦相似度 + 字面关键词加分 + 最低相关度过滤）
+// Rerank 二次精排（硅基流动 /v1/rerank）
+async function rerankCandidates(queryText, coarseItems, topK, threshold) {
+    const key = state.config.geminiKey.trim();
+    if (!key || !isSiliconFlowOrOpenAI() || coarseItems.length <= 1) return null;
+    const model = (state.config.rerankModel || '').trim() || 'BAAI/bge-reranker-v2-m3';
+    try {
+        const docs = coarseItems.map(c => {
+            const tagsStr = (c.slice.tags || []).map(t => `#${t}`).join(' ');
+            return `${c.slice.date ? '[' + c.slice.date + '] ' : ''}${tagsStr ? tagsStr + ' ' : ''}${c.slice.text || ''}`;
+        });
+        const res = await fetch(`${getOpenAIBaseUrl()}/rerank`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${key}`
+            },
+            body: JSON.stringify({
+                model,
+                query: queryText,
+                documents: docs,
+                top_n: Math.min(topK, docs.length),
+                return_documents: false
+            })
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!Array.isArray(data.results) || data.results.length === 0) return null;
+        return data.results
+            .map(r => {
+                const orig = coarseItems[r.index];
+                if (!orig) return null;
+                const finalScore = Number(r.relevance_score || 0) + (orig.exactBonus > 0 ? 0.1 : 0);
+                return { slice: orig.slice, score: finalScore };
+            })
+            .filter(item => item && (threshold <= 0 || item.score >= threshold))
+            .sort((a, b) => b.score - a.score)
+            .slice(0, topK);
+    } catch (e) {
+        console.warn('Rerank failed, falling back to vector+lexical:', e);
+        return null;
+    }
+}
+
+// 检索当前分支 Top-K 记忆切片（余弦相似度 + 字面关键词加分 + 可选 Rerank + 最低相关度过滤）
 async function retrieveTopKMemories(queryText, filterTag = '', topK = state.config.topK, minScore = state.config.minScore) {
     const branchData = getCurrentBranchData();
     let candidates = branchData.slices || [];
@@ -2132,19 +2193,26 @@ async function retrieveTopKMemories(queryText, filterTag = '', topK = state.conf
     const cleanQ = (queryText || '').trim().toLowerCase();
     const threshold = typeof minScore === 'number' ? minScore : 0.38;
 
-    const scored = candidates.map(slice => {
+    const scoredAll = candidates.map(slice => {
         const cos = cosineSimilarity(queryVec, slice.vector || []);
         const textHay = `${slice.text || ''} ${(slice.tags || []).join(' ')} ${slice.event || ''}`.toLowerCase();
         const exactBonus = (cleanQ.length >= 2 && textHay.includes(cleanQ)) ? 0.25 : 0;
         const lex = lexicalOverlapScore(queryText, slice);
         const finalScore = cos + (exactBonus || lex * 0.5);
-        return { slice, score: finalScore };
-    })
-    .filter(item => threshold <= 0 || item.score >= threshold)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK);
+        return { slice, score: finalScore, exactBonus };
+    }).sort((a, b) => b.score - a.score);
 
-    return scored;
+    // 若已开启 Rerank 且配置了硅基流动，先粗排取前 15 条进行精排
+    if (state.config.rerankEnabled && isSiliconFlowOrOpenAI() && scoredAll.length > 1) {
+        const coarsePool = scoredAll.slice(0, Math.max(topK * 3, 15));
+        const reranked = await rerankCandidates(queryText, coarsePool, topK, threshold);
+        if (reranked !== null) return reranked;
+    }
+
+    return scoredAll
+        .filter(item => threshold <= 0 || item.score >= threshold)
+        .slice(0, topK)
+        .map(({ slice, score }) => ({ slice, score }));
 }
 
 /* ============================================================================
@@ -3439,19 +3507,22 @@ function bindEvents() {
         }
     }
 
-    function populateModelSelects(provider, customChatList = null, customEmbedList = null, selectedChat = '', selectedEmbed = '') {
+    function populateModelSelects(provider, customChatList = null, customEmbedList = null, selectedChat = '', selectedEmbed = '', customRerankList = null, selectedRerank = '') {
         const pKey = provider === 'siliconflow' ? 'siliconflow' : 'gemini';
         const cached = getCachedFetchedModels()[pKey] || {};
         const presets = PRESET_MODELS[pKey];
 
         const chatList = Array.from(new Set([...(customChatList || cached.chat || presets.chat)]));
         const embedList = Array.from(new Set([...(customEmbedList || cached.embed || presets.embed)]));
+        const rerankList = Array.from(new Set([...(customRerankList || cached.rerank || presets.rerank || PRESET_MODELS.siliconflow.rerank)]));
 
         if (selectedChat && !chatList.includes(selectedChat)) chatList.unshift(selectedChat);
         if (selectedEmbed && !embedList.includes(selectedEmbed)) embedList.unshift(selectedEmbed);
+        if (selectedRerank && !rerankList.includes(selectedRerank)) rerankList.unshift(selectedRerank);
 
         const chatEl = document.getElementById('cfg-chat-model');
         const embedEl = document.getElementById('cfg-embed-model');
+        const rerankEl = document.getElementById('cfg-rerank-model');
 
         chatEl.innerHTML = '';
         chatList.forEach(m => {
@@ -3470,6 +3541,15 @@ function bindEvents() {
             embedEl.appendChild(opt);
         });
         embedEl.value = (selectedEmbed && embedList.includes(selectedEmbed)) ? selectedEmbed : (embedList[0] || '');
+
+        rerankEl.innerHTML = '';
+        rerankList.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            rerankEl.appendChild(opt);
+        });
+        rerankEl.value = (selectedRerank && rerankList.includes(selectedRerank)) ? selectedRerank : (rerankList[0] || '');
     }
 
     async function fetchModelsFromAPI() {
@@ -3488,6 +3568,7 @@ function bindEvents() {
         try {
             let chatModels = [];
             let embedModels = [];
+            let rerankModels = [];
             const useOpenAI = provider === 'siliconflow' || base.includes('siliconflow') || base.endsWith('/v1') || key.startsWith('sk-');
 
             if (useOpenAI) {
@@ -3496,9 +3577,10 @@ function bindEvents() {
                     : (base.endsWith('/v1') ? base : `${base}/v1`);
 
                 if (v1Base.includes('siliconflow.cn')) {
-                    const [chatRes, embRes] = await Promise.all([
+                    const [chatRes, embRes, rerankRes] = await Promise.all([
                         fetch(`${v1Base}/models?sub_type=chat`, { headers: { 'Authorization': `Bearer ${key}` } }),
-                        fetch(`${v1Base}/models?sub_type=embedding`, { headers: { 'Authorization': `Bearer ${key}` } })
+                        fetch(`${v1Base}/models?sub_type=embedding`, { headers: { 'Authorization': `Bearer ${key}` } }),
+                        fetch(`${v1Base}/models?sub_type=reranker`, { headers: { 'Authorization': `Bearer ${key}` } })
                     ]);
                     if (chatRes.ok) {
                         const cData = await chatRes.json();
@@ -3507,6 +3589,10 @@ function bindEvents() {
                     if (embRes.ok) {
                         const eData = await embRes.json();
                         embedModels = (eData.data || []).map(m => m.id).filter(Boolean);
+                    }
+                    if (rerankRes.ok) {
+                        const rData = await rerankRes.json();
+                        rerankModels = (rData.data || []).map(m => m.id).filter(Boolean);
                     }
                 }
 
@@ -3517,9 +3603,11 @@ function bindEvents() {
                     if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
                     const data = await res.json();
                     const ids = (data.data || []).map(m => m.id).filter(Boolean);
-                    const embedRe = /embed|bge-|bce-embedding|m3e|jina-embeddings/i;
-                    const excludeChatRe = /embed|reranker|flux|stable-diffusion|whisper|tts|fishaudio|cosyvoice|sensevoice|video/i;
+                    const embedRe = /embed|bge-(?!rerank)|bce-embedding|m3e|jina-embeddings/i;
+                    const rerankRe = /rerank/i;
+                    const excludeChatRe = /embed|rerank|flux|stable-diffusion|whisper|tts|fishaudio|cosyvoice|sensevoice|video/i;
                     embedModels = ids.filter(id => embedRe.test(id));
+                    rerankModels = ids.filter(id => rerankRe.test(id));
                     chatModels = ids.filter(id => !excludeChatRe.test(id));
                 }
             } else {
@@ -3540,18 +3628,20 @@ function bindEvents() {
                 });
             }
 
-            if (chatModels.length === 0) chatModels = PRESET_MODELS[useOpenAI ? 'siliconflow' : 'gemini'].chat;
-            if (embedModels.length === 0) embedModels = PRESET_MODELS[useOpenAI ? 'siliconflow' : 'gemini'].embed;
-
             const pKey = useOpenAI ? 'siliconflow' : 'gemini';
+            if (chatModels.length === 0) chatModels = PRESET_MODELS[pKey].chat;
+            if (embedModels.length === 0) embedModels = PRESET_MODELS[pKey].embed;
+            if (rerankModels.length === 0) rerankModels = PRESET_MODELS[pKey].rerank;
+
             const cache = getCachedFetchedModels();
-            cache[pKey] = { chat: chatModels, embed: embedModels };
+            cache[pKey] = { chat: chatModels, embed: embedModels, rerank: rerankModels };
             localStorage.setItem(STORAGE_KEYS.FETCHED_MODELS, JSON.stringify(cache));
 
             const curChat = document.getElementById('cfg-chat-model').value;
             const curEmbed = document.getElementById('cfg-embed-model').value;
-            populateModelSelects(pKey, chatModels, embedModels, curChat, curEmbed);
-            showToast('模型列表拉取成功', `共获取 ${chatModels.length} 个对话模型、${embedModels.length} 个向量模型`, 'success');
+            const curRerank = document.getElementById('cfg-rerank-model').value;
+            populateModelSelects(pKey, chatModels, embedModels, curChat, curEmbed, rerankModels, curRerank);
+            showToast('模型列表拉取成功', `共获取 ${chatModels.length} 个对话、${embedModels.length} 个向量、${rerankModels.length} 个重排模型`, 'success');
         } catch (err) {
             showToast('拉取模型失败', err.message, 'error');
         } finally {
@@ -3569,12 +3659,12 @@ function bindEvents() {
             if (!baseEl.value.trim() || baseEl.value.includes('generativelanguage.googleapis.com')) {
                 baseEl.value = 'https://api.siliconflow.cn/v1';
             }
-            populateModelSelects('siliconflow', null, null, 'Qwen/Qwen2.5-7B-Instruct', 'BAAI/bge-m3');
+            populateModelSelects('siliconflow', null, null, 'Qwen/Qwen2.5-7B-Instruct', 'BAAI/bge-m3', null, 'BAAI/bge-reranker-v2-m3');
         } else {
             if (!baseEl.value.trim() || baseEl.value.includes('api.siliconflow.cn')) {
                 baseEl.value = 'https://generativelanguage.googleapis.com';
             }
-            populateModelSelects('gemini', null, null, 'gemini-2.5-flash', 'text-embedding-004');
+            populateModelSelects('gemini', null, null, 'gemini-2.5-flash', 'text-embedding-004', null, 'BAAI/bge-reranker-v2-m3');
         }
     });
 
@@ -3583,7 +3673,8 @@ function bindEvents() {
         document.getElementById('cfg-api-provider').value = provider;
         document.getElementById('cfg-gemini-key').value = state.config.geminiKey;
         document.getElementById('cfg-gemini-base').value = state.config.geminiBase;
-        populateModelSelects(provider, null, null, state.config.chatModel, state.config.embedModel);
+        populateModelSelects(provider, null, null, state.config.chatModel, state.config.embedModel, null, state.config.rerankModel);
+        document.getElementById('cfg-rerank-enabled').checked = Boolean(state.config.rerankEnabled);
         document.getElementById('cfg-top-k').value = state.config.topK;
         document.getElementById('cfg-min-score').value = state.config.minScore ?? 0.38;
         document.getElementById('cfg-auto-turns').value = state.config.autoTurns;
@@ -3631,6 +3722,8 @@ function bindEvents() {
             || (provider === 'siliconflow' ? 'Qwen/Qwen2.5-7B-Instruct' : 'gemini-2.5-flash');
         state.config.embedModel = document.getElementById('cfg-embed-model').value.trim()
             || (provider === 'siliconflow' ? 'BAAI/bge-m3' : 'text-embedding-004');
+        state.config.rerankEnabled = document.getElementById('cfg-rerank-enabled').checked;
+        state.config.rerankModel = document.getElementById('cfg-rerank-model').value.trim() || 'BAAI/bge-reranker-v2-m3';
         state.config.topK = Math.max(1, parseInt(document.getElementById('cfg-top-k').value, 10) || 5);
         const parsedMinScore = parseFloat(document.getElementById('cfg-min-score').value);
         state.config.minScore = Number.isFinite(parsedMinScore) ? Math.min(0.95, Math.max(0, parsedMinScore)) : 0.38;
