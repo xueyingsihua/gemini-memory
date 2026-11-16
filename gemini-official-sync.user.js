@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.1.0
+// @version      1.2.0
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -10,6 +10,7 @@
 // @grant        GM_xmlhttpRequest
 // @connect      api.github.com
 // @connect      generativelanguage.googleapis.com
+// @connect      api.siliconflow.cn
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
@@ -75,6 +76,7 @@
     const DEFAULT_TAGS = ['核心设定', '日常点滴', '重要事件', '偏好习惯', '约定待办', '剧情进度', '感情升温'];
 
     const state = {
+        apiProvider: 'gemini',
         geminiKey: '',
         geminiBase: 'https://generativelanguage.googleapis.com',
         chatModel: 'gemini-2.5-flash',
@@ -102,6 +104,7 @@
 
     function saveConfig() {
         const toSave = {
+            apiProvider: state.apiProvider,
             geminiKey: state.geminiKey,
             geminiBase: state.geminiBase,
             chatModel: state.chatModel,
@@ -450,13 +453,52 @@
         return compactVector(vec.map(v => v / norm));
     }
 
+    function isSiliconFlowOrOpenAI() {
+        const base = (state.geminiBase || '').toLowerCase();
+        const key = (state.geminiKey || '').trim();
+        return state.apiProvider === 'siliconflow' || base.includes('siliconflow') || base.endsWith('/v1') || key.startsWith('sk-');
+    }
+
+    function getOpenAIBaseUrl() {
+        let base = (state.geminiBase || '').trim().replace(/\/+$/, '');
+        if (!base || base.includes('generativelanguage.googleapis.com')) {
+            return 'https://api.siliconflow.cn/v1';
+        }
+        return base.endsWith('/v1') ? base : `${base}/v1`;
+    }
+
     async function getEmbeddingVector(text) {
-        if (!state.geminiKey.trim()) return computeLocalFallbackVector(text);
+        const key = state.geminiKey.trim();
+        if (!key) return computeLocalFallbackVector(text);
+
+        if (isSiliconFlowOrOpenAI()) {
+            const rawModel = (state.embedModel || '').trim();
+            const embedModel = (!rawModel || rawModel.includes('text-embedding') || rawModel.includes('gemini-embedding'))
+                ? 'BAAI/bge-m3'
+                : rawModel;
+            try {
+                const res = await safeFetch(`${getOpenAIBaseUrl()}/embeddings`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${key}`
+                    },
+                    body: JSON.stringify({ model: embedModel, input: text, encoding_format: 'float' })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const emb = data.data?.[0]?.embedding;
+                    if (Array.isArray(emb)) return compactVector(emb);
+                }
+            } catch (e) {}
+            return computeLocalFallbackVector(text);
+        }
+
         const base = (state.geminiBase || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
         const models = [state.embedModel || 'text-embedding-004', 'gemini-embedding-001'];
         for (const m of models) {
             try {
-                const res = await safeFetch(`${base}/v1beta/models/${m}:embedContent?key=${encodeURIComponent(state.geminiKey.trim())}`, {
+                const res = await safeFetch(`${base}/v1beta/models/${m}:embedContent?key=${encodeURIComponent(key)}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ model: `models/${m}`, content: { parts: [{ text }] } })
@@ -520,21 +562,46 @@
     }
 
     async function summarizeViaGemini(rawText) {
-        if (!state.geminiKey.trim()) return { text: rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
-        const base = (state.geminiBase || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
-        const model = state.chatModel || 'gemini-2.5-flash';
+        const key = state.geminiKey.trim();
+        if (!key) return { text: rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
         const sys = `请将以下对话提炼为 100~180 字的精简长期记忆总结，并从 [${state.customTags.join('、')}] 中选 2~3 个标签。只输出 JSON: {"text":"总结内容","tags":["标签1"]}`;
-        const res = await safeFetch(`${base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(state.geminiKey.trim())}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                systemInstruction: { parts: [{ text: sys }] },
-                contents: [{ role: 'user', parts: [{ text: rawText }] }]
-            })
-        });
-        if (!res.ok) return { text: rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
-        const data = await res.json();
-        const reply = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').replace(/```json|```/gi, '').trim();
+
+        let reply = '';
+        if (isSiliconFlowOrOpenAI()) {
+            const rawModel = (state.chatModel || '').trim();
+            const model = (!rawModel || rawModel.startsWith('gemini-')) ? 'Qwen/Qwen2.5-7B-Instruct' : rawModel;
+            const res = await safeFetch(`${getOpenAIBaseUrl()}/chat/completions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${key}`
+                },
+                body: JSON.stringify({
+                    model,
+                    messages: [
+                        { role: 'system', content: sys },
+                        { role: 'user', content: rawText }
+                    ]
+                })
+            });
+            if (!res.ok) return { text: rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
+            const data = await res.json();
+            reply = (data.choices?.[0]?.message?.content || '').replace(/```json|```/gi, '').trim();
+        } else {
+            const base = (state.geminiBase || 'https://generativelanguage.googleapis.com').replace(/\/+$/, '');
+            const model = state.chatModel || 'gemini-2.5-flash';
+            const res = await safeFetch(`${base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    systemInstruction: { parts: [{ text: sys }] },
+                    contents: [{ role: 'user', parts: [{ text: rawText }] }]
+                })
+            });
+            if (!res.ok) return { text: rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
+            const data = await res.json();
+            reply = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').replace(/```json|```/gi, '').trim();
+        }
         try {
             return JSON.parse(reply);
         } catch (e) {
@@ -602,9 +669,13 @@
 
             <!-- 折叠配置区 -->
             <details style="font-size:12px;background:#fdfbf7;padding:8px 10px;border-radius:6px;border:1px dashed #bfaea0;">
-                <summary style="cursor:pointer;font-weight:700;color:#5d4e46;">⚙️ 配置 GitHub 仓库与 Gemini Key</summary>
+                <summary style="cursor:pointer;font-weight:700;color:#5d4e46;">⚙️ 配置 GitHub 仓库与模型 Key</summary>
                 <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
-                    <input type="password" id="cq-cfg-key" class="cq-input" placeholder="Gemini API Key (AIzaSy...)">
+                    <select id="cq-cfg-provider" class="cq-select">
+                        <option value="gemini">✨ Google Gemini</option>
+                        <option value="siliconflow">🚀 硅基流动 SiliconFlow (国内直连)</option>
+                    </select>
+                    <input type="password" id="cq-cfg-key" class="cq-input" placeholder="API Key (AIzaSy... 或 硅基流动 sk-...)">
                     <input type="password" id="cq-cfg-pat" class="cq-input" placeholder="GitHub Token (ghp_...)">
                     <input type="text" id="cq-cfg-repo" class="cq-input" placeholder="GitHub 仓库 (如 yourname/gemini-memory)">
                     <button class="cq-btn primary" id="cq-btn-save-cfg">💾 保存连接配置</button>
@@ -640,6 +711,7 @@
                 tagBox.appendChild(span);
             });
 
+            document.getElementById('cq-cfg-provider').value = state.apiProvider || 'gemini';
             document.getElementById('cq-cfg-key').value = state.geminiKey;
             document.getElementById('cq-cfg-pat').value = state.githubPat;
             document.getElementById('cq-cfg-repo').value = state.githubRepo;
@@ -665,7 +737,29 @@
         });
 
         document.getElementById('cq-btn-save-cfg').addEventListener('click', () => {
+            state.apiProvider = document.getElementById('cq-cfg-provider').value || 'gemini';
             state.geminiKey = document.getElementById('cq-cfg-key').value.trim();
+            if (state.apiProvider === 'siliconflow') {
+                if (!state.geminiBase || state.geminiBase.includes('generativelanguage.googleapis.com')) {
+                    state.geminiBase = 'https://api.siliconflow.cn/v1';
+                }
+                if (!state.chatModel || state.chatModel.startsWith('gemini-')) {
+                    state.chatModel = 'Qwen/Qwen2.5-7B-Instruct';
+                }
+                if (!state.embedModel || state.embedModel.includes('text-embedding')) {
+                    state.embedModel = 'BAAI/bge-m3';
+                }
+            } else {
+                if (!state.geminiBase || state.geminiBase.includes('api.siliconflow.cn')) {
+                    state.geminiBase = 'https://generativelanguage.googleapis.com';
+                }
+                if (!state.chatModel || state.chatModel === 'Qwen/Qwen2.5-7B-Instruct') {
+                    state.chatModel = 'gemini-2.5-flash';
+                }
+                if (!state.embedModel || state.embedModel === 'BAAI/bge-m3') {
+                    state.embedModel = 'text-embedding-004';
+                }
+            }
             state.githubPat = document.getElementById('cq-cfg-pat').value.trim();
             state.githubRepo = document.getElementById('cq-cfg-repo').value.trim();
             saveConfig();
