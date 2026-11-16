@@ -1785,16 +1785,16 @@
 <div class="modal-overlay" id="branch-manager-modal">
     <div class="modal-card">
         <div class="modal-header">
-            <span class="modal-title">🌿 分支记忆隔间管理（物理隔离）</span>
+            <span class="modal-title">🌿 分支记忆隔间管理</span>
             <button class="btn-chuqing icon-only" id="btn-close-branch-manager">
                 <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
         <div class="modal-body">
             <div class="form-group">
-                <label class="form-label">➕ 新建独立记忆隔间（支持中文/英文名）</label>
+                <label class="form-label">➕ 新建独立记忆隔间</label>
                 <div style="display:flex;gap:8px;">
-                    <input type="text" id="new-branch-input" class="chuqing-input" placeholder="例如：日常闲聊、现代线、古风线、工作笔记...">
+                    <input type="text" id="new-branch-input" class="chuqing-input" placeholder="输入新隔间名 (如: 日常、古风线)">
                     <button class="btn-chuqing primary" id="btn-confirm-add-branch" style="flex-shrink:0;">➕ 新建</button>
                 </div>
                 <span class="form-hint">每个隔间在 GitHub 中对应独立的 <code>branches/{隔间名}.json</code> 文件，不同隔间之间记忆 100% 物理隔离、绝不互通串戏。</span>
@@ -1803,7 +1803,7 @@
             <hr style="border:none;border-top:1px dashed var(--color-border);margin:4px 0;">
 
             <div class="form-group">
-                <label class="form-label">📂 现有隔间列表（可随时改名或删除默认隔间）</label>
+                <label class="form-label">📂 现有隔间列表</label>
                 <div id="branch-manager-list" style="display:flex;flex-direction:column;gap:8px;"></div>
             </div>
         </div>
@@ -2869,16 +2869,18 @@ function bindEvents() {
             const isCurrent = bName === state.currentBranch;
             const count = state.branchCache[bName]?.slices?.length ?? 0;
             const row = document.createElement('div');
-            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;background:var(--color-input);border:1px solid var(--color-border);border-radius:var(--radius-sm);';
+            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--color-input);border:1px solid var(--color-border);border-radius:var(--radius-sm);';
             row.innerHTML = `
-                <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-                    <span style="font-weight:700;color:var(--color-text-strong);word-break:break-all;">🌿 ${escapeHtml(bName)}</span>
-                    ${isCurrent ? '<span class="badge-count" style="background:rgba(var(--rgb-green),0.15);color:var(--base-green);">当前使用</span>' : ''}
-                    <span class="badge-count">${count} 条记忆</span>
+                <div style="display:flex;flex-direction:column;gap:5px;min-width:0;flex:1;">
+                    <div style="font-weight:700;font-size:14px;color:var(--color-text-strong);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(bName)}">🌿 ${escapeHtml(bName)}</div>
+                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        ${isCurrent ? '<span class="badge-count" style="background:rgba(var(--rgb-green),0.15);color:var(--base-green);">当前使用</span>' : ''}
+                        <span class="badge-count">${count} 条记忆</span>
+                    </div>
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-                    <button class="btn-chuqing btn-rename-branch" style="height:26px;padding:0 8px;font-size:12px;">✏️ 改名</button>
-                    <button class="btn-chuqing btn-delete-branch" style="height:26px;padding:0 8px;font-size:12px;color:var(--color-danger);">🗑️ 删除</button>
+                    <button class="btn-chuqing btn-rename-branch" style="height:28px;padding:0 9px;font-size:12px;">✏️ 改名</button>
+                    <button class="btn-chuqing btn-delete-branch" style="height:28px;padding:0 9px;font-size:12px;color:var(--color-danger);">🗑️ 删除</button>
                 </div>
             `;
 
