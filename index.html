@@ -1808,7 +1808,7 @@ const state = {
         githubRepo: ''
     },
     globalProfile: {
-        persona: '你是我的专属 AI 伴侣与私人助手，温柔、细腻、注重细节，会自然地结合唤醒的过往记忆与我对话。',
+        persona: '',
         customTags: [...DEFAULT_TAGS],
         branchList: ['main', 'daily_life', 'story_branch'],
         sha: null
@@ -2262,7 +2262,7 @@ function loadLocalState() {
         Object.assign(state.config, cfg);
 
         const gp = JSON.parse(localStorage.getItem(STORAGE_KEYS.GLOBAL_PROFILE) || '{}');
-        if (gp.persona) state.globalProfile.persona = gp.persona;
+        if (typeof gp.persona === 'string') state.globalProfile.persona = gp.persona;
         if (Array.isArray(gp.customTags) && gp.customTags.length) state.globalProfile.customTags = gp.customTags;
         if (Array.isArray(gp.branchList) && gp.branchList.length) state.globalProfile.branchList = gp.branchList;
 
