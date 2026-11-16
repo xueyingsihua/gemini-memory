@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.4.0
+// @version      1.4.1
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -45,6 +45,14 @@
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
+    }
+
+    function getLocalDateStr() {
+        const d = new Date();
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
     }
 
     // 突破官网 CSP 限制的跨域请求封装
@@ -1021,7 +1029,7 @@
                 slices.push({
                     id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
                     text: finalText,
-                    date: new Date().toISOString().slice(0, 10),
+                    date: getLocalDateStr(),
                     tags: finalTags.length ? finalTags : ['日常点滴'],
                     event: '官网一键归档',
                     vector: vec
