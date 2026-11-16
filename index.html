@@ -1538,10 +1538,44 @@
                 font-size: 12px !important;
             }
 
-            #user-input {
+            .dock-input-row {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .input-expand-wrap {
+                display: contents;
+            }
+
+            #user-input,
+            #user-input.has-text {
+                grid-column: 1 / -1;
+                width: 100%;
+                padding: 9px 12px !important;
                 font-size: 13.5px !important;
                 line-height: 1.5;
                 max-height: 50vh;
+            }
+
+            .input-corner-actions {
+                position: static;
+                justify-self: start;
+                gap: 8px;
+            }
+
+            .btn-expand-input {
+                width: 30px;
+                height: 30px;
+                font-size: 12.5px;
+            }
+
+            #btn-send-msg {
+                justify-self: end;
+                height: 32px !important;
+                padding: 0 16px !important;
+                font-size: 12.5px;
             }
 
             .form-grid-2 {
