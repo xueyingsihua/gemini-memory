@@ -1858,9 +1858,14 @@
 
     <div class="drawer-body">
         <!-- 搜索与标签筛选栏 -->
-        <div style="display:flex;gap:8px;">
-            <input type="text" id="drawer-search-input" class="chuqing-input" placeholder="🔍 搜索记忆内容、事件或日期...">
-            <button class="btn-chuqing" id="btn-export-json" title="导出当前分支 JSON 备份">导出</button>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;gap:8px;">
+                <input type="text" id="drawer-search-input" class="chuqing-input" placeholder="🔍 搜索记忆内容、事件或日期...">
+                <button class="btn-chuqing" id="btn-export-json" title="导出当前分支 JSON 备份">导出</button>
+            </div>
+            <button class="btn-chuqing" id="btn-reembed-branch" style="height:32px;font-size:12.5px;width:100%;" title="更换 Embedding 模型或维度后，使用当前模型重新生成本隔间全部记忆向量并同步 GitHub">
+                🔄 一键重算当前隔间全部向量
+            </button>
         </div>
 
         <!-- 标签筛选胶囊栏 -->
@@ -2363,11 +2368,12 @@ function getEmbedApiConfig() {
     return resolveApiEndpoint(ep, state.config.embedKey || state.config.geminiKey, state.config.embedBase);
 }
 
-// 调用向量 Embedding API (独立使用 getEmbedApiConfig，支持与对话模型拆分)
-async function getEmbeddingVector(text) {
+// 调用向量 Embedding API (独立使用 getEmbedApiConfig，支持与对话模型拆分；strict=true 时失败抛错而不静默回退)
+async function getEmbeddingVector(text, strict = false) {
     const embedCfg = getEmbedApiConfig();
     const key = embedCfg.key;
     if (!key) {
+        if (strict) throw new Error('未配置向量 API Key');
         return computeLocalFallbackVector(text);
     }
 
@@ -2376,6 +2382,7 @@ async function getEmbeddingVector(text) {
         const embedModel = (!rawModel || rawModel.includes('text-embedding') || rawModel.includes('gemini-embedding'))
             ? 'BAAI/bge-m3'
             : rawModel;
+        let lastErr = '向量接口返回空数据';
         try {
             const url = `${embedCfg.base}/embeddings`;
             const res = await fetch(url, {
@@ -2397,16 +2404,20 @@ async function getEmbeddingVector(text) {
                     return compactVector(emb);
                 }
             } else {
-                console.warn('SiliconFlow embedding failed:', res.status, await res.text());
+                lastErr = `HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`;
+                console.warn('SiliconFlow embedding failed:', lastErr);
             }
         } catch (err) {
+            lastErr = err.message || String(err);
             console.warn('SiliconFlow embedding error, falling back:', err);
         }
+        if (strict) throw new Error(lastErr);
         return computeLocalFallbackVector(text);
     }
 
     const base = embedCfg.base;
     const modelsToTry = [state.config.embedModel || 'text-embedding-004', 'gemini-embedding-001'];
+    let lastGeminiErr = 'Gemini Embedding 调用失败';
 
     for (const modelName of modelsToTry) {
         try {
@@ -2424,11 +2435,15 @@ async function getEmbeddingVector(text) {
                 if (data.embedding && Array.isArray(data.embedding.values)) {
                     return compactVector(data.embedding.values);
                 }
+            } else {
+                lastGeminiErr = `HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`;
             }
         } catch (err) {
+            lastGeminiErr = err.message || String(err);
             console.warn(`Embedding model ${modelName} failed, trying fallback:`, err);
         }
     }
+    if (strict) throw new Error(lastGeminiErr);
     return computeLocalFallbackVector(text);
 }
 
@@ -2566,6 +2581,36 @@ function encodeGithubPath(path) {
     return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
 }
 
+async function githubReadBlobFallback(repo, pat, path, knownSha = null) {
+    let sha = knownSha;
+    if (!sha) {
+        const parts = path.split('/');
+        const fileName = parts.pop();
+        const dirPath = parts.join('/');
+        const dirUrl = dirPath
+            ? `https://api.github.com/repos/${repo}/contents/${encodeGithubPath(dirPath)}?t=${Date.now()}`
+            : `https://api.github.com/repos/${repo}/contents?t=${Date.now()}`;
+        const dirRes = await fetch(dirUrl, {
+            headers: { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' }
+        });
+        if (!dirRes.ok) throw new Error(`GitHub 目录定位失败 (${dirRes.status})`);
+        const items = await dirRes.json();
+        const match = Array.isArray(items) && items.find(i => i.path === path || i.name === fileName);
+        if (!match || !match.sha) return null;
+        sha = match.sha;
+    }
+    const blobRes = await fetch(`https://api.github.com/repos/${repo}/git/blobs/${sha}`, {
+        headers: { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' }
+    });
+    if (!blobRes.ok) throw new Error(`GitHub Blob 读取失败 (${blobRes.status})`);
+    const blobData = await blobRes.json();
+    const contentStr = base64ToUtf8(blobData.content || '');
+    return {
+        json: JSON.parse(contentStr),
+        sha: blobData.sha || sha
+    };
+}
+
 async function githubGetFile(path) {
     const repo = state.config.githubRepo.trim();
     const pat = state.config.githubPat.trim();
@@ -2577,12 +2622,22 @@ async function githubGetFile(path) {
         }
     });
     if (res.status === 404) return null;
+    if (res.status === 403) {
+        const errText = await res.text();
+        if (errText.includes('too_large')) {
+            return await githubReadBlobFallback(repo, pat, path, null);
+        }
+        throw new Error(`GitHub 读取失败 (${res.status}): ${errText}`);
+    }
     if (!res.ok) {
         const errText = await res.text();
         throw new Error(`GitHub 读取失败 (${res.status}): ${errText}`);
     }
     const data = await res.json();
-    const contentStr = base64ToUtf8(data.content || '');
+    if (!data.content || data.encoding === 'none') {
+        return await githubReadBlobFallback(repo, pat, path, data.sha || null);
+    }
+    const contentStr = base64ToUtf8(data.content);
     return {
         json: JSON.parse(contentStr),
         sha: data.sha
@@ -2605,9 +2660,10 @@ async function githubPutFile(path, jsonData, sha = null, commitMsg = 'Update mem
         }
     }
 
+    // 使用紧凑 JSON 减少向量数组的换行与缩进体积，避免触发 GitHub 1MB Contents API 限制
     const bodyObj = {
         message: commitMsg,
-        content: utf8ToBase64(JSON.stringify(jsonData, null, 2))
+        content: utf8ToBase64(JSON.stringify(jsonData))
     };
     if (latestSha) bodyObj.sha = latestSha;
 
@@ -3943,6 +3999,72 @@ function bindEvents() {
         a.click();
         URL.revokeObjectURL(url);
         showToast('已导出 JSON', `分支 [${state.currentBranch}] 备份已下载`, 'info');
+    });
+
+    // 一键批量重算当前隔间全部记忆向量 (切换 Embedding 模型/维度迁移用)
+    document.getElementById('btn-reembed-branch').addEventListener('click', async () => {
+        const branch = state.currentBranch;
+        const branchData = getCurrentBranchData();
+        const slices = branchData.slices || [];
+        if (slices.length === 0) {
+            showToast('当前隔间为空', '暂无记忆切片需要重算向量', 'warning');
+            return;
+        }
+        const embedCfg = getEmbedApiConfig();
+        if (!embedCfg.key) {
+            showToast('未配置向量 Key', '请先在 ⚙️ 设置中填写有效的向量接口 Key，再批量重算向量', 'warning');
+            return;
+        }
+        const modelName = (state.config.embedModel || '').trim() || (embedCfg.useOpenAI ? 'BAAI/bge-m3' : 'text-embedding-004');
+        const ok = confirm(`确定使用当前向量模型 [${modelName}] 重新计算 [${branch}] 共 ${slices.length} 条记忆的向量吗？\n\n重算期间请勿关闭页面，完成后将自动同步至云端。`);
+        if (!ok) return;
+
+        let successCount = 0;
+        let failCount = 0;
+        let firstErrMsg = '';
+        showLoading('RE-EMBEDDING', `准备重算 [${branch}] 共 ${slices.length} 条记忆向量...`);
+        try {
+            const loadingMsgEl = document.getElementById('loading-subtext');
+            for (let i = 0; i < slices.length; i++) {
+                if (loadingMsgEl) {
+                    loadingMsgEl.textContent = `正在重算向量 ${i + 1} / ${slices.length} (${modelName})...`;
+                }
+                const s = slices[i];
+                const embedInput = `${s.event || ''} ${(s.tags || []).join(' ')} ${s.text || ''}`.trim();
+                try {
+                    const vec = await getEmbeddingVector(embedInput, true);
+                    s.vector = vec;
+                    successCount++;
+                } catch (err) {
+                    failCount++;
+                    if (!firstErrMsg) firstErrMsg = err.message;
+                    if (successCount === 0 && failCount >= 2) {
+                        throw new Error(`连续失败，已中止重算：${firstErrMsg}`);
+                    }
+                }
+                if (i < slices.length - 1) {
+                    await new Promise(r => setTimeout(r, 60));
+                }
+            }
+
+            if (successCount > 0) {
+                saveLocalState();
+                if (isGithubConfigured()) {
+                    if (loadingMsgEl) loadingMsgEl.textContent = `正在将 ${successCount} 条新向量同步至 GitHub...`;
+                    await syncBranchToGithub(branch, `Re-embed ${successCount} slices with ${modelName}`);
+                }
+                renderAllUI();
+                if (failCount === 0) {
+                    showToast('批量重算完成', `已用 [${modelName}] 更新 ${successCount} 条记忆向量${isGithubConfigured() ? '并同步 GitHub' : ''}`, 'success');
+                } else {
+                    showToast('部分重算完成', `成功 ${successCount} 条，失败 ${failCount} 条（已保留原向量）`, 'warning');
+                }
+            }
+        } catch (err) {
+            showToast('批量重算中止', err.message, 'error');
+        } finally {
+            hideLoading();
+        }
     });
 
     // 配置弹窗与模型拉取

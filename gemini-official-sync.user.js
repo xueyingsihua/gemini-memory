@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.6.1
+// @version      1.6.2
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -662,6 +662,37 @@
         return path.split('/').map(seg => encodeURIComponent(seg)).join('/');
     }
 
+    async function githubReadBlobFallback(path, knownSha = null) {
+        const repo = state.githubRepo.trim();
+        const pat = state.githubPat.trim();
+        let sha = knownSha;
+        if (!sha) {
+            const parts = path.split('/');
+            const fileName = parts.pop();
+            const dirPath = parts.join('/');
+            const dirUrl = dirPath
+                ? `https://api.github.com/repos/${repo}/contents/${encodeGithubPath(dirPath)}?t=${Date.now()}`
+                : `https://api.github.com/repos/${repo}/contents?t=${Date.now()}`;
+            const dirRes = await safeFetch(dirUrl, {
+                headers: { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' }
+            });
+            if (!dirRes.ok) throw new Error(`GitHub 目录定位失败 (${dirRes.status})`);
+            const items = await dirRes.json();
+            const match = Array.isArray(items) && items.find(i => i.path === path || i.name === fileName);
+            if (!match || !match.sha) return null;
+            sha = match.sha;
+        }
+        const blobRes = await safeFetch(`https://api.github.com/repos/${repo}/git/blobs/${sha}`, {
+            headers: { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json' }
+        });
+        if (!blobRes.ok) throw new Error(`GitHub Blob 读取失败 (${blobRes.status})`);
+        const blobData = await blobRes.json();
+        return {
+            json: JSON.parse(base64ToUtf8(blobData.content || '')),
+            sha: blobData.sha || sha
+        };
+    }
+
     async function githubGetFile(path) {
         const res = await safeFetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/${encodeGithubPath(path)}?t=${Date.now()}`, {
             headers: {
@@ -670,9 +701,19 @@
             }
         });
         if (res.status === 404) return null;
+        if (res.status === 403) {
+            const errText = await res.text();
+            if (errText.includes('too_large')) {
+                return await githubReadBlobFallback(path, null);
+            }
+            throw new Error(`GitHub HTTP ${res.status}`);
+        }
         if (!res.ok) throw new Error(`GitHub HTTP ${res.status}`);
         const data = await res.json();
-        return { json: JSON.parse(base64ToUtf8(data.content || '')), sha: data.sha };
+        if (!data.content || data.encoding === 'none') {
+            return await githubReadBlobFallback(path, data.sha || null);
+        }
+        return { json: JSON.parse(base64ToUtf8(data.content)), sha: data.sha };
     }
 
     async function githubPutFile(path, jsonData, sha = null, message = 'Sync from Gemini official web') {
@@ -681,7 +722,7 @@
             const existing = await githubGetFile(path).catch(() => null);
             if (existing?.sha) latestSha = existing.sha;
         }
-        const body = { message, content: utf8ToBase64(JSON.stringify(jsonData, null, 2)) };
+        const body = { message, content: utf8ToBase64(JSON.stringify(jsonData)) };
         if (latestSha) body.sha = latestSha;
         const res = await safeFetch(`https://api.github.com/repos/${state.githubRepo.trim()}/contents/${encodeGithubPath(path)}`, {
             method: 'PUT',
