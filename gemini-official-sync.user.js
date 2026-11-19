@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.6.2
+// @version      1.7.0
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -64,6 +64,7 @@
                     url: url,
                     headers: options.headers || {},
                     data: options.body || undefined,
+                    timeout: options.timeout || 30000,
                     onload: (res) => {
                         resolve({
                             ok: res.status >= 200 && res.status < 300,
@@ -92,16 +93,104 @@
             chat: ['Qwen/Qwen2.5-7B-Instruct', 'Qwen/Qwen2.5-72B-Instruct', 'deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'THUDM/glm-4-9b-chat'],
             embed: ['BAAI/bge-m3', 'BAAI/bge-large-zh-v1.5', 'netease-youdao/bce-embedding-base_v1', 'Pro/BAAI/bge-m3'],
             rerank: ['BAAI/bge-reranker-v2-m3', 'netease-youdao/bce-reranker-base_v1', 'Pro/BAAI/bge-reranker-v2-m3']
+        },
+        openai: {
+            chat: ['gpt-4o-mini', 'gpt-4o', 'deepseek-chat', 'deepseek-reasoner', 'claude-3-5-sonnet-20241022', 'gemini-2.5-flash'],
+            embed: ['text-embedding-3-small', 'text-embedding-3-large', 'BAAI/bge-m3'],
+            rerank: ['BAAI/bge-reranker-v2-m3', 'rerank-v3.5']
         }
     };
+
+    const PROVIDER_DEFAULTS = {
+        gemini: {
+            base: 'https://generativelanguage.googleapis.com',
+            chatModel: 'gemini-2.5-flash',
+            embedModel: 'text-embedding-004',
+            rerankModel: 'BAAI/bge-reranker-v2-m3',
+            keyPlaceholder: 'Google Gemini API Key (AIzaSy...)',
+            basePlaceholder: 'https://generativelanguage.googleapis.com'
+        },
+        siliconflow: {
+            base: 'https://api.siliconflow.cn/v1',
+            chatModel: 'Qwen/Qwen2.5-7B-Instruct',
+            embedModel: 'BAAI/bge-m3',
+            rerankModel: 'BAAI/bge-reranker-v2-m3',
+            keyPlaceholder: '硅基流动 API Key (sk-...)',
+            basePlaceholder: 'https://api.siliconflow.cn/v1'
+        },
+        openai: {
+            base: 'https://api.openai.com/v1',
+            chatModel: 'gpt-4o-mini',
+            embedModel: 'text-embedding-3-small',
+            rerankModel: 'BAAI/bge-reranker-v2-m3',
+            keyPlaceholder: 'OpenAI 兼容 / 中转 API Key (sk-...)',
+            basePlaceholder: 'https://api.openai.com/v1 (可填中转基址)'
+        }
+    };
+
+    function normalizeProvider(p) {
+        if (p === 'siliconflow' || p === 'openai' || p === 'gemini') return p;
+        return 'gemini';
+    }
+
+    function createDefaultChatProfiles() {
+        return {
+            gemini: { key: '', base: PROVIDER_DEFAULTS.gemini.base, model: PROVIDER_DEFAULTS.gemini.chatModel },
+            siliconflow: { key: '', base: PROVIDER_DEFAULTS.siliconflow.base, model: PROVIDER_DEFAULTS.siliconflow.chatModel },
+            openai: { key: '', base: PROVIDER_DEFAULTS.openai.base, model: PROVIDER_DEFAULTS.openai.chatModel }
+        };
+    }
+
+    function createDefaultEmbedProfiles() {
+        return {
+            gemini: { key: '', base: PROVIDER_DEFAULTS.gemini.base, model: PROVIDER_DEFAULTS.gemini.embedModel, rerankModel: PROVIDER_DEFAULTS.gemini.rerankModel },
+            siliconflow: { key: '', base: PROVIDER_DEFAULTS.siliconflow.base, model: PROVIDER_DEFAULTS.siliconflow.embedModel, rerankModel: PROVIDER_DEFAULTS.siliconflow.rerankModel },
+            openai: { key: '', base: PROVIDER_DEFAULTS.openai.base, model: PROVIDER_DEFAULTS.openai.embedModel, rerankModel: PROVIDER_DEFAULTS.openai.rerankModel }
+        };
+    }
+
+    function ensureProviderProfiles(cfg) {
+        const defChat = createDefaultChatProfiles();
+        const savedChat = (cfg.chatProfiles && typeof cfg.chatProfiles === 'object') ? cfg.chatProfiles : {};
+        cfg.chatProfiles = {
+            gemini: { ...defChat.gemini, ...(savedChat.gemini || {}) },
+            siliconflow: { ...defChat.siliconflow, ...(savedChat.siliconflow || {}) },
+            openai: { ...defChat.openai, ...(savedChat.openai || {}) }
+        };
+        const activeChat = normalizeProvider(cfg.apiProvider);
+        if (cfg.geminiKey && !cfg.chatProfiles[activeChat].key) {
+            cfg.chatProfiles[activeChat].key = cfg.geminiKey;
+            if (cfg.geminiBase) cfg.chatProfiles[activeChat].base = cfg.geminiBase;
+            if (cfg.chatModel) cfg.chatProfiles[activeChat].model = cfg.chatModel;
+        }
+
+        const defEmbed = createDefaultEmbedProfiles();
+        const savedEmbed = (cfg.embedProfiles && typeof cfg.embedProfiles === 'object') ? cfg.embedProfiles : {};
+        cfg.embedProfiles = {
+            gemini: { ...defEmbed.gemini, ...(savedEmbed.gemini || {}) },
+            siliconflow: { ...defEmbed.siliconflow, ...(savedEmbed.siliconflow || {}) },
+            openai: { ...defEmbed.openai, ...(savedEmbed.openai || {}) }
+        };
+        if (cfg.embedProvider && cfg.embedProvider !== 'same') {
+            const ep = normalizeProvider(cfg.embedProvider);
+            if (cfg.embedKey && !cfg.embedProfiles[ep].key) {
+                cfg.embedProfiles[ep].key = cfg.embedKey;
+                if (cfg.embedBase) cfg.embedProfiles[ep].base = cfg.embedBase;
+                if (cfg.embedModel) cfg.embedProfiles[ep].model = cfg.embedModel;
+                if (cfg.rerankModel) cfg.embedProfiles[ep].rerankModel = cfg.rerankModel;
+            }
+        }
+    }
 
     const state = {
         apiProvider: 'gemini',
         geminiKey: '',
         geminiBase: 'https://generativelanguage.googleapis.com',
+        chatProfiles: createDefaultChatProfiles(),
         embedProvider: 'same',
         embedKey: '',
         embedBase: 'https://api.siliconflow.cn/v1',
+        embedProfiles: createDefaultEmbedProfiles(),
         chatModel: 'gemini-2.5-flash',
         embedModel: 'text-embedding-004',
         rerankEnabled: false,
@@ -132,6 +221,7 @@
                 ? parsed.branchPersonas
                 : {};
             state.selectedTags = new Set(parsed.selectedTagsArr || ['日常点滴']);
+            ensureProviderProfiles(state);
         } catch (e) {
             console.warn('[初晴助手] 读取配置失败', e);
         }
@@ -142,9 +232,11 @@
             apiProvider: state.apiProvider,
             geminiKey: state.geminiKey,
             geminiBase: state.geminiBase,
+            chatProfiles: state.chatProfiles,
             embedProvider: state.embedProvider,
             embedKey: state.embedKey,
             embedBase: state.embedBase,
+            embedProfiles: state.embedProfiles,
             chatModel: state.chatModel,
             embedModel: state.embedModel,
             rerankEnabled: state.rerankEnabled,
@@ -497,22 +589,46 @@
         return compactVector(vec.map(v => v / norm));
     }
 
-    function resolveApiEndpoint(provider, rawKey, rawBase) {
-        const key = (rawKey || '').trim();
-        const baseTrim = (rawBase || '').trim().replace(/\/+$/, '');
-        const baseLower = baseTrim.toLowerCase();
-        const useOpenAI = provider === 'siliconflow' ||
-            (provider !== 'gemini' && (baseLower.includes('siliconflow') || baseLower.endsWith('/v1') || key.startsWith('sk-')));
-        if (useOpenAI) {
-            const openAiBase = (!baseTrim || baseLower.includes('generativelanguage.googleapis.com'))
-                ? 'https://api.siliconflow.cn/v1'
-                : (baseTrim.endsWith('/v1') ? baseTrim : `${baseTrim}/v1`);
-            return { provider: 'siliconflow', useOpenAI: true, key, base: openAiBase };
+    function normalizeOpenAIBase(rawBase, fallbackBase) {
+        let base = (rawBase || '').trim().replace(/\/+$/, '');
+        base = base.replace(/\/(chat\/completions|embeddings|rerank|models)$/i, '').replace(/\/+$/, '');
+        if (!base || base.toLowerCase().includes('generativelanguage.googleapis.com')) {
+            return fallbackBase;
         }
-        const geminiBase = (!baseTrim || baseLower.includes('siliconflow.cn'))
-            ? 'https://generativelanguage.googleapis.com'
-            : baseTrim.replace(/\/v1$/, '');
-        return { provider: 'gemini', useOpenAI: false, key, base: geminiBase };
+        if (/\/v\d+[a-z0-9_-]*$/i.test(base)) {
+            return base;
+        }
+        return `${base}/v1`;
+    }
+
+    function resolveApiEndpoint(provider, rawKey, rawBase) {
+        const prov = normalizeProvider(provider);
+        const key = (rawKey || '').trim();
+        const cleanBase = (rawBase || '').trim().replace(/\/+$/, '');
+        if (prov === 'siliconflow') {
+            return {
+                provider: 'siliconflow',
+                useOpenAI: true,
+                key,
+                base: normalizeOpenAIBase(cleanBase, 'https://api.siliconflow.cn/v1')
+            };
+        }
+        if (prov === 'openai') {
+            return {
+                provider: 'openai',
+                useOpenAI: true,
+                key,
+                base: normalizeOpenAIBase(cleanBase, 'https://api.openai.com/v1')
+            };
+        }
+        return {
+            provider: 'gemini',
+            useOpenAI: false,
+            key,
+            base: (!cleanBase || /siliconflow\.cn|api\.openai\.com/i.test(cleanBase))
+                ? 'https://generativelanguage.googleapis.com'
+                : cleanBase.replace(/\/v1$/i, '')
+        };
     }
 
     function getChatApiConfig() {
@@ -532,17 +648,19 @@
 
         if (cfg.useOpenAI) {
             const rawModel = (state.embedModel || '').trim();
-            const embedModel = (!rawModel || rawModel.includes('text-embedding') || rawModel.includes('gemini-embedding'))
-                ? 'BAAI/bge-m3'
-                : rawModel;
+            const embedModel = cfg.provider === 'siliconflow'
+                ? ((!rawModel || rawModel.includes('text-embedding') || rawModel.includes('gemini-embedding')) ? 'BAAI/bge-m3' : rawModel)
+                : (rawModel || 'text-embedding-3-small');
             try {
+                const bodyPayload = { model: embedModel, input: text };
+                if (cfg.provider === 'siliconflow') bodyPayload.encoding_format = 'float';
                 const res = await safeFetch(`${cfg.base}/embeddings`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${key}`
                     },
-                    body: JSON.stringify({ model: embedModel, input: text, encoding_format: 'float' })
+                    body: JSON.stringify(bodyPayload)
                 });
                 if (res.ok) {
                     const data = await res.json();
@@ -746,7 +864,9 @@
         let reply = '';
         if (cfg.useOpenAI) {
             const rawModel = (state.chatModel || '').trim();
-            const model = (!rawModel || rawModel.startsWith('gemini-')) ? 'Qwen/Qwen2.5-7B-Instruct' : rawModel;
+            const model = cfg.provider === 'siliconflow'
+                ? ((!rawModel || rawModel.startsWith('gemini-')) ? 'Qwen/Qwen2.5-7B-Instruct' : rawModel)
+                : (rawModel || 'gpt-4o-mini');
             const res = await safeFetch(`${cfg.base}/chat/completions`, {
                 method: 'POST',
                 headers: {
@@ -863,17 +983,23 @@
 
             <!-- 折叠配置区 -->
             <details style="font-size:12px;background:#fdfbf7;padding:8px 10px;border-radius:6px;border:1px dashed #bfaea0;">
-                <summary style="cursor:pointer;font-weight:700;color:#5d4e46;">⚙️ 配置 GitHub 仓库与双路模型 Key</summary>
+                <summary style="cursor:pointer;font-weight:700;color:#5d4e46;">⚙️ 配置 GitHub 仓库与多路模型 Key</summary>
                 <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px;">
                     <span style="font-size:11px;color:#5d4e46;font-weight:700;">💬 总结接口 (Chat)：</span>
                     <div class="cq-row">
-                        <select id="cq-cfg-provider" class="cq-select" style="flex:1;">
+                        <select id="cq-cfg-provider" class="cq-select" style="flex:1;min-width:0;">
                             <option value="gemini">✨ Google Gemini</option>
-                            <option value="siliconflow">🚀 硅基流动 SiliconFlow (国内直连)</option>
+                            <option value="siliconflow">🚀 硅基流动 SiliconFlow</option>
+                            <option value="openai">🌐 OpenAI 兼容 (通用中转)</option>
                         </select>
-                        <button type="button" class="cq-btn" id="cq-btn-fetch-models" style="flex-shrink:0;font-size:11.5px;">🔄 拉取总结</button>
+                        <button type="button" class="cq-btn" id="cq-btn-fetch-models" style="flex-shrink:0;font-size:11px;padding:4px 7px;">🔄 拉取</button>
+                        <button type="button" class="cq-btn" id="cq-btn-test-chat" style="flex-shrink:0;font-size:11px;padding:4px 7px;">🧪 测试</button>
                     </div>
-                    <input type="password" id="cq-cfg-key" class="cq-input" placeholder="总结 API Key (AIzaSy... 或 sk-...)">
+                    <div class="cq-row" style="gap:4px;">
+                        <input type="password" id="cq-cfg-key" class="cq-input" style="flex:1;" placeholder="总结 API Key (AIzaSy... 或 sk-...)">
+                        <button type="button" class="cq-btn cq-btn-toggle-secret" data-target="cq-cfg-key" title="显示/隐藏密钥" style="padding:4px 7px;flex-shrink:0;">👁️</button>
+                    </div>
+                    <input type="text" id="cq-cfg-base" class="cq-input" placeholder="总结接口 Base URL (可选反代/中转基址)">
                     <div style="display:flex;flex-direction:column;gap:3px;">
                         <span style="font-size:11px;color:#5d4e46;font-weight:700;">总结模型:</span>
                         <select id="cq-cfg-chat-model" class="cq-select"></select>
@@ -881,16 +1007,21 @@
                     <hr style="border:none;border-top:1px dashed #d6cbc1;margin:2px 0;">
                     <span style="font-size:11px;color:#5d4e46;font-weight:700;">🧬 向量与重排接口 (Embedding / Rerank)：</span>
                     <div class="cq-row">
-                        <select id="cq-cfg-embed-provider" class="cq-select" style="flex:1;">
+                        <select id="cq-cfg-embed-provider" class="cq-select" style="flex:1;min-width:0;">
                             <option value="same">🔗 与总结同一接口</option>
-                            <option value="siliconflow">🚀 单独用 硅基流动 SiliconFlow</option>
-                            <option value="gemini">✨ 单独用 Google Gemini</option>
+                            <option value="siliconflow">🚀 单独用 硅基流动</option>
+                            <option value="gemini">✨ 单独用 Gemini</option>
+                            <option value="openai">🌐 单独用 OpenAI 兼容</option>
                         </select>
-                        <button type="button" class="cq-btn" id="cq-btn-fetch-embed-models" style="flex-shrink:0;font-size:11.5px;">🔄 拉取向量</button>
+                        <button type="button" class="cq-btn" id="cq-btn-fetch-embed-models" style="flex-shrink:0;font-size:11px;padding:4px 7px;">🔄 拉取</button>
+                        <button type="button" class="cq-btn" id="cq-btn-test-embed" style="flex-shrink:0;font-size:11px;padding:4px 7px;">🧪 测试</button>
                     </div>
                     <div id="cq-cfg-embed-auth-box" style="display:none;flex-direction:column;gap:5px;">
-                        <input type="password" id="cq-cfg-embed-key" class="cq-input" placeholder="向量/重排独立 API Key (如 sk-...)">
-                        <input type="text" id="cq-cfg-embed-base" class="cq-input" placeholder="向量/重排 Base URL (默认硅基流动 /v1)">
+                        <div class="cq-row" style="gap:4px;">
+                            <input type="password" id="cq-cfg-embed-key" class="cq-input" style="flex:1;" placeholder="向量/重排独立 API Key">
+                            <button type="button" class="cq-btn cq-btn-toggle-secret" data-target="cq-cfg-embed-key" title="显示/隐藏密钥" style="padding:4px 7px;flex-shrink:0;">👁️</button>
+                        </div>
+                        <input type="text" id="cq-cfg-embed-base" class="cq-input" placeholder="向量/重排 Base URL">
                     </div>
                     <div style="display:flex;flex-direction:column;gap:3px;">
                         <span style="font-size:11px;color:#5d4e46;font-weight:700;">向量模型:</span>
@@ -905,7 +1036,10 @@
                         <select id="cq-cfg-rerank-model" class="cq-select"></select>
                     </div>
                     <hr style="border:none;border-top:1px dashed #d6cbc1;margin:2px 0;">
-                    <input type="password" id="cq-cfg-pat" class="cq-input" placeholder="GitHub Token (ghp_...)">
+                    <div class="cq-row" style="gap:4px;">
+                        <input type="password" id="cq-cfg-pat" class="cq-input" style="flex:1;" placeholder="GitHub Token (ghp_...)">
+                        <button type="button" class="cq-btn cq-btn-toggle-secret" data-target="cq-cfg-pat" title="显示/隐藏 Token" style="padding:4px 7px;flex-shrink:0;">👁️</button>
+                    </div>
                     <input type="text" id="cq-cfg-repo" class="cq-input" placeholder="GitHub 仓库 (如 yourname/gemini-memory)">
                     <button class="cq-btn primary" id="cq-btn-save-cfg">💾 保存连接配置</button>
                 </div>
@@ -913,40 +1047,88 @@
         `);
         document.body.appendChild(panel);
 
+        let uiActiveChatProv = normalizeProvider(state.apiProvider);
+        let uiActiveEmbedProv = state.embedProvider || 'same';
+
         function fillSelectOptions(sel, list, preferred) {
+            const cleanPref = (preferred && preferred !== '__custom__') ? preferred : '';
+            const finalList = Array.from(new Set(list.filter(Boolean)));
+            if (cleanPref && !finalList.includes(cleanPref)) finalList.unshift(cleanPref);
             setSafeHTML(sel, '');
-            list.forEach(m => {
+            finalList.forEach(m => {
                 const o = document.createElement('option');
                 o.value = m;
                 o.textContent = m;
                 sel.appendChild(o);
             });
-            sel.value = (preferred && list.includes(preferred)) ? preferred : (list[0] || '');
+            const customOpt = document.createElement('option');
+            customOpt.value = '__custom__';
+            customOpt.textContent = '✏️ 手动输入模型名...';
+            sel.appendChild(customOpt);
+            const targetVal = (cleanPref && finalList.includes(cleanPref)) ? cleanPref : (finalList[0] || '');
+            sel.value = targetVal;
+            sel.dataset.prevValue = targetVal;
         }
+
+        function getUserscriptSelectValue(id, fallbackVal) {
+            const el = document.getElementById(id);
+            const v = (el?.value || '').trim();
+            if (!v || v === '__custom__') return (el?.dataset?.prevValue || fallbackVal || '').trim();
+            return v;
+        }
+
+        function bindUserscriptCustomSelect(selectId, labelText) {
+            const selEl = document.getElementById(selectId);
+            if (!selEl || selEl.dataset.customBound) return;
+            selEl.dataset.customBound = '1';
+            selEl.addEventListener('change', () => {
+                if (selEl.value === '__custom__') {
+                    const raw = prompt(`请输入自定义${labelText}名称（如 gpt-4o-mini / gemini-2.5-pro / text-embedding-3-small）：`, selEl.dataset.prevValue || '');
+                    const customVal = (raw || '').trim();
+                    if (!customVal || customVal === '__custom__') {
+                        selEl.value = selEl.dataset.prevValue || '';
+                        return;
+                    }
+                    const existing = Array.from(selEl.options).find(o => o.value === customVal);
+                    if (!existing) {
+                        const o = document.createElement('option');
+                        o.value = customVal;
+                        o.textContent = customVal;
+                        const customPlaceholderOpt = Array.from(selEl.options).find(op => op.value === '__custom__');
+                        selEl.insertBefore(o, customPlaceholderOpt || null);
+                    }
+                    selEl.value = customVal;
+                    selEl.dataset.prevValue = customVal;
+                } else {
+                    selEl.dataset.prevValue = selEl.value;
+                }
+            });
+        }
+
+        bindUserscriptCustomSelect('cq-cfg-chat-model', '总结模型');
+        bindUserscriptCustomSelect('cq-cfg-embed-model', '向量模型');
+        bindUserscriptCustomSelect('cq-cfg-rerank-model', '重排模型');
 
         function getEffectiveEmbedProviderKey() {
             const ep = document.getElementById('cq-cfg-embed-provider').value || 'same';
-            const chatP = (document.getElementById('cq-cfg-provider').value || 'gemini') === 'siliconflow' ? 'siliconflow' : 'gemini';
-            return ep === 'same' ? chatP : (ep === 'siliconflow' ? 'siliconflow' : 'gemini');
+            const chatP = normalizeProvider(document.getElementById('cq-cfg-provider').value);
+            return ep === 'same' ? chatP : normalizeProvider(ep);
         }
 
         function populateChatModels(provider, customChat = null, selChat = '') {
-            const pKey = provider === 'siliconflow' ? 'siliconflow' : 'gemini';
+            const pKey = normalizeProvider(provider);
             const cached = (state.fetchedModels && state.fetchedModels[pKey]) || {};
             const presets = PRESET_MODELS[pKey];
-            const chatList = Array.from(new Set([...(customChat || cached.chat || presets.chat)]));
-            if (selChat && !chatList.includes(selChat)) chatList.unshift(selChat);
+            const chatList = customChat || cached.chat || presets.chat;
             fillSelectOptions(document.getElementById('cq-cfg-chat-model'), chatList, selChat);
         }
 
         function populateEmbedRerankModels(provider, customEmbed = null, selEmbed = '', customRerank = null, selRerank = '') {
-            const pKey = provider === 'siliconflow' ? 'siliconflow' : 'gemini';
+            const pKey = normalizeProvider(provider);
             const cached = (state.fetchedModels && state.fetchedModels[pKey]) || {};
             const presets = PRESET_MODELS[pKey];
-            const embedList = Array.from(new Set([...(customEmbed || cached.embed || presets.embed)]));
-            const rerankList = Array.from(new Set([...(customRerank || cached.rerank || presets.rerank || PRESET_MODELS.siliconflow.rerank)]));
-            if (selEmbed && !embedList.includes(selEmbed)) embedList.unshift(selEmbed);
-            if (selRerank && !rerankList.includes(selRerank)) rerankList.unshift(selRerank);
+            const embedList = customEmbed || cached.embed || presets.embed;
+            const rerankList = customRerank || cached.rerank || presets.rerank || PRESET_MODELS.siliconflow.rerank;
             fillSelectOptions(document.getElementById('cq-cfg-embed-model'), embedList, selEmbed);
             fillSelectOptions(document.getElementById('cq-cfg-rerank-model'), rerankList, selRerank);
         }
@@ -957,7 +1139,72 @@
             box.style.display = ep === 'same' ? 'none' : 'flex';
         }
 
+        function saveUserscriptChatFormToProfile(prov) {
+            const p = normalizeProvider(prov);
+            const def = PROVIDER_DEFAULTS[p];
+            state.chatProfiles = state.chatProfiles || createDefaultChatProfiles();
+            state.chatProfiles[p] = {
+                key: document.getElementById('cq-cfg-key').value.trim(),
+                base: document.getElementById('cq-cfg-base').value.trim() || def.base,
+                model: getUserscriptSelectValue('cq-cfg-chat-model', def.chatModel)
+            };
+        }
+
+        function loadUserscriptChatProfileToForm(prov) {
+            const p = normalizeProvider(prov);
+            const def = PROVIDER_DEFAULTS[p];
+            ensureProviderProfiles(state);
+            const prof = state.chatProfiles[p] || { key: '', base: def.base, model: def.chatModel };
+            const keyEl = document.getElementById('cq-cfg-key');
+            const baseEl = document.getElementById('cq-cfg-base');
+            keyEl.value = prof.key || '';
+            keyEl.placeholder = def.keyPlaceholder;
+            baseEl.value = prof.base || def.base;
+            baseEl.placeholder = def.basePlaceholder;
+            populateChatModels(p, null, prof.model || def.chatModel);
+        }
+
+        function saveUserscriptEmbedFormToProfile(ep) {
+            if (!ep || ep === 'same') return;
+            const p = normalizeProvider(ep);
+            const def = PROVIDER_DEFAULTS[p];
+            state.embedProfiles = state.embedProfiles || createDefaultEmbedProfiles();
+            state.embedProfiles[p] = {
+                key: document.getElementById('cq-cfg-embed-key').value.trim(),
+                base: document.getElementById('cq-cfg-embed-base').value.trim() || def.base,
+                model: getUserscriptSelectValue('cq-cfg-embed-model', def.embedModel),
+                rerankModel: getUserscriptSelectValue('cq-cfg-rerank-model', def.rerankModel)
+            };
+        }
+
+        function loadUserscriptEmbedProfileToForm(ep) {
+            const mode = ep || 'same';
+            const effP = mode === 'same' ? normalizeProvider(document.getElementById('cq-cfg-provider').value) : normalizeProvider(mode);
+            const def = PROVIDER_DEFAULTS[effP];
+            ensureProviderProfiles(state);
+            const prof = state.embedProfiles[effP] || { key: '', base: def.base, model: def.embedModel, rerankModel: def.rerankModel };
+            if (mode !== 'same') {
+                const keyEl = document.getElementById('cq-cfg-embed-key');
+                const baseEl = document.getElementById('cq-cfg-embed-base');
+                keyEl.value = prof.key || '';
+                keyEl.placeholder = def.keyPlaceholder;
+                baseEl.value = prof.base || def.base;
+                baseEl.placeholder = def.basePlaceholder;
+            }
+            populateEmbedRerankModels(effP, null, prof.model || def.embedModel, null, prof.rerankModel || def.rerankModel);
+        }
+
+        function checkUserscriptKeyMismatch(provider, key) {
+            const p = normalizeProvider(provider);
+            const k = (key || '').trim();
+            if (!k) return '';
+            if (p === 'gemini' && k.startsWith('sk-')) return 'Gemini 接口却填了 sk- 开头密钥';
+            if (p === 'siliconflow' && k.startsWith('AIza')) return '硅基流动却填了 AIza 开头密钥';
+            return '';
+        }
+
         function renderPanelState() {
+            ensureProviderProfiles(state);
             const sel = document.getElementById('cq-branch-select');
             setSafeHTML(sel, '');
             state.branchList.forEach(b => {
@@ -984,17 +1231,36 @@
                 tagBox.appendChild(span);
             });
 
-            const prov = state.apiProvider || 'gemini';
+            const prov = normalizeProvider(state.apiProvider);
             const embedProv = state.embedProvider || 'same';
-            const effEmbedProv = embedProv === 'same' ? prov : embedProv;
+            uiActiveChatProv = prov;
+            uiActiveEmbedProv = embedProv;
+
+            state.chatProfiles[prov] = {
+                key: state.geminiKey || state.chatProfiles[prov].key || '',
+                base: state.geminiBase || state.chatProfiles[prov].base || PROVIDER_DEFAULTS[prov].base,
+                model: state.chatModel || state.chatProfiles[prov].model || PROVIDER_DEFAULTS[prov].chatModel
+            };
+            if (embedProv !== 'same') {
+                const epKey = normalizeProvider(embedProv);
+                state.embedProfiles[epKey] = {
+                    key: state.embedKey || state.embedProfiles[epKey].key || '',
+                    base: state.embedBase || state.embedProfiles[epKey].base || PROVIDER_DEFAULTS[epKey].base,
+                    model: state.embedModel || state.embedProfiles[epKey].model || PROVIDER_DEFAULTS[epKey].embedModel,
+                    rerankModel: state.rerankModel || state.embedProfiles[epKey].rerankModel || PROVIDER_DEFAULTS[epKey].rerankModel
+                };
+            } else {
+                state.embedProfiles[prov].model = state.embedModel || state.embedProfiles[prov].model;
+                state.embedProfiles[prov].rerankModel = state.rerankModel || state.embedProfiles[prov].rerankModel;
+            }
+
             document.getElementById('cq-cfg-provider').value = prov;
-            document.getElementById('cq-cfg-key').value = state.geminiKey;
+            loadUserscriptChatProfileToForm(prov);
+
             document.getElementById('cq-cfg-embed-provider').value = embedProv;
-            document.getElementById('cq-cfg-embed-key').value = state.embedKey || '';
-            document.getElementById('cq-cfg-embed-base').value = state.embedBase || (effEmbedProv === 'siliconflow' ? 'https://api.siliconflow.cn/v1' : 'https://generativelanguage.googleapis.com');
             toggleUserscriptEmbedBox();
-            populateChatModels(prov, null, state.chatModel);
-            populateEmbedRerankModels(effEmbedProv, null, state.embedModel, null, state.rerankModel);
+            loadUserscriptEmbedProfileToForm(embedProv);
+
             document.getElementById('cq-cfg-rerank-enabled').checked = Boolean(state.rerankEnabled);
             document.getElementById('cq-cfg-pat').value = state.githubPat;
             document.getElementById('cq-cfg-repo').value = state.githubRepo;
@@ -1004,38 +1270,43 @@
 
         renderPanelState();
 
+        panel.querySelectorAll('.cq-btn-toggle-secret').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const target = document.getElementById(btn.dataset.target);
+                if (!target) return;
+                const reveal = target.type === 'password';
+                target.type = reveal ? 'text' : 'password';
+                btn.textContent = reveal ? '🙈' : '👁️';
+            });
+        });
+
         // 事件监听
         document.getElementById('cq-cfg-provider').addEventListener('change', e => {
-            const p = e.target.value;
-            populateChatModels(p, null, p === 'siliconflow' ? 'Qwen/Qwen2.5-7B-Instruct' : 'gemini-2.5-flash');
+            saveUserscriptChatFormToProfile(uiActiveChatProv);
+            uiActiveChatProv = normalizeProvider(e.target.value);
+            loadUserscriptChatProfileToForm(uiActiveChatProv);
             if ((document.getElementById('cq-cfg-embed-provider').value || 'same') === 'same') {
-                populateEmbedRerankModels(p, null, p === 'siliconflow' ? 'BAAI/bge-m3' : 'text-embedding-004', null, 'BAAI/bge-reranker-v2-m3');
+                loadUserscriptEmbedProfileToForm('same');
             }
         });
 
-        document.getElementById('cq-cfg-embed-provider').addEventListener('change', () => {
+        document.getElementById('cq-cfg-embed-provider').addEventListener('change', e => {
+            saveUserscriptEmbedFormToProfile(uiActiveEmbedProv);
+            uiActiveEmbedProv = e.target.value || 'same';
             toggleUserscriptEmbedBox();
-            const ep = document.getElementById('cq-cfg-embed-provider').value || 'same';
-            const effP = getEffectiveEmbedProviderKey();
-            const baseInput = document.getElementById('cq-cfg-embed-base');
-            if (ep === 'siliconflow' && (!baseInput.value || baseInput.value.includes('generativelanguage.googleapis.com'))) {
-                baseInput.value = 'https://api.siliconflow.cn/v1';
-            } else if (ep === 'gemini' && (!baseInput.value || baseInput.value.includes('siliconflow.cn'))) {
-                baseInput.value = 'https://generativelanguage.googleapis.com';
-            }
-            populateEmbedRerankModels(effP, null, effP === 'siliconflow' ? 'BAAI/bge-m3' : 'text-embedding-004', null, 'BAAI/bge-reranker-v2-m3');
+            loadUserscriptEmbedProfileToForm(uiActiveEmbedProv);
         });
 
         async function fetchUserscriptModelsFor(target) {
             const isEmbed = target === 'embed';
             const ep = document.getElementById('cq-cfg-embed-provider').value || 'same';
-            const provider = isEmbed ? getEffectiveEmbedProviderKey() : (document.getElementById('cq-cfg-provider').value || 'gemini');
+            const provider = isEmbed ? getEffectiveEmbedProviderKey() : normalizeProvider(document.getElementById('cq-cfg-provider').value);
             const rawKey = (isEmbed && ep !== 'same')
                 ? document.getElementById('cq-cfg-embed-key').value.trim()
                 : document.getElementById('cq-cfg-key').value.trim();
             const rawBase = (isEmbed && ep !== 'same')
                 ? document.getElementById('cq-cfg-embed-base').value.trim()
-                : state.geminiBase;
+                : document.getElementById('cq-cfg-base').value.trim();
             const btn = document.getElementById(isEmbed ? 'cq-btn-fetch-embed-models' : 'cq-btn-fetch-models');
             const origText = btn.textContent;
             if (!rawKey) {
@@ -1065,7 +1336,7 @@
                         const res = await safeFetch(`${v1Base}/models`, { headers: { 'Authorization': `Bearer ${resolved.key}` } });
                         if (!res.ok) throw new Error(`HTTP ${res.status}`);
                         const ids = ((await res.json()).data || []).map(m => m.id).filter(Boolean);
-                        embedModels = ids.filter(id => /embed|bge-(?!rerank)|bce-embedding|m3e|jina-embeddings/i.test(id));
+                        embedModels = ids.filter(id => /embed|bge-(?!rerank)|bce-embedding|m3e|jina-embeddings|text-embedding/i.test(id));
                         rerankModels = ids.filter(id => /rerank/i.test(id));
                         chatModels = ids.filter(id => !/embed|rerank|flux|stable-diffusion|whisper|tts|fishaudio|cosyvoice|sensevoice|video/i.test(id));
                     }
@@ -1081,7 +1352,7 @@
                         if (methods.includes('generateContent')) chatModels.push(id);
                     });
                 }
-                const pKey = resolved.useOpenAI ? 'siliconflow' : 'gemini';
+                const pKey = resolved.provider;
                 if (!chatModels.length) chatModels = PRESET_MODELS[pKey].chat;
                 if (!embedModels.length) embedModels = PRESET_MODELS[pKey].embed;
                 if (!rerankModels.length) rerankModels = PRESET_MODELS[pKey].rerank;
@@ -1089,10 +1360,10 @@
                 state.fetchedModels[pKey] = { chat: chatModels, embed: embedModels, rerank: rerankModels };
                 saveConfig();
                 if (!isEmbed) {
-                    populateChatModels(pKey, chatModels, document.getElementById('cq-cfg-chat-model').value);
+                    populateChatModels(pKey, chatModels, getUserscriptSelectValue('cq-cfg-chat-model', PROVIDER_DEFAULTS[pKey].chatModel));
                 }
                 if (isEmbed || ep === 'same') {
-                    populateEmbedRerankModels(pKey, embedModels, document.getElementById('cq-cfg-embed-model').value, rerankModels, document.getElementById('cq-cfg-rerank-model').value);
+                    populateEmbedRerankModels(pKey, embedModels, getUserscriptSelectValue('cq-cfg-embed-model', PROVIDER_DEFAULTS[pKey].embedModel), rerankModels, getUserscriptSelectValue('cq-cfg-rerank-model', PROVIDER_DEFAULTS[pKey].rerankModel));
                 }
                 showToast('模型拉取成功', isEmbed
                     ? `共 ${embedModels.length} 个向量 / ${rerankModels.length} 个重排模型`
@@ -1107,6 +1378,125 @@
 
         document.getElementById('cq-btn-fetch-models').addEventListener('click', () => fetchUserscriptModelsFor('chat'));
         document.getElementById('cq-btn-fetch-embed-models').addEventListener('click', () => fetchUserscriptModelsFor('embed'));
+
+        document.getElementById('cq-btn-test-chat').addEventListener('click', async () => {
+            const btn = document.getElementById('cq-btn-test-chat');
+            const provider = normalizeProvider(document.getElementById('cq-cfg-provider').value);
+            const rawKey = document.getElementById('cq-cfg-key').value.trim();
+            const rawBase = document.getElementById('cq-cfg-base').value.trim();
+            const model = getUserscriptSelectValue('cq-cfg-chat-model', PROVIDER_DEFAULTS[provider].chatModel);
+            if (!rawKey) {
+                showToast('请先填 Key', '请先填入总结接口 API Key', 'warn');
+                return;
+            }
+            const mismatch = checkUserscriptKeyMismatch(provider, rawKey);
+            if (mismatch) showToast('密钥前缀提醒', mismatch, 'warn');
+
+            const resolved = resolveApiEndpoint(provider, rawKey, rawBase);
+            btn.disabled = true;
+            btn.textContent = '⏳';
+            const t0 = Date.now();
+            try {
+                if (resolved.useOpenAI) {
+                    const res = await safeFetch(`${resolved.base}/chat/completions`, {
+                        method: 'POST',
+                        timeout: 25000,
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resolved.key}` },
+                        body: JSON.stringify({ model, messages: [{ role: 'user', content: '请仅回复OK两个字母' }], max_tokens: 16 })
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
+                    const data = await res.json();
+                    const reply = (data.choices?.[0]?.message?.content || '').trim();
+                    showToast('总结接口测试通过', `[${model}] ${Date.now() - t0}ms，回复: ${(reply || 'OK').slice(0, 24)}`);
+                } else {
+                    const res = await safeFetch(`${resolved.base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(resolved.key)}`, {
+                        method: 'POST',
+                        timeout: 25000,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ role: 'user', parts: [{ text: '请仅回复OK两个字母' }] }],
+                            generationConfig: { maxOutputTokens: 16 },
+                            safetySettings: [
+                                { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                                { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                                { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                                { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                                { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
+                            ]
+                        })
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
+                    const data = await res.json();
+                    const reply = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+                    showToast('总结接口测试通过', `[${model}] ${Date.now() - t0}ms，回复: ${(reply || 'OK').slice(0, 24)}`);
+                }
+            } catch (err) {
+                showToast('总结接口测试失败', err.message, 'err');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🧪 测试';
+            }
+        });
+
+        document.getElementById('cq-btn-test-embed').addEventListener('click', async () => {
+            const btn = document.getElementById('cq-btn-test-embed');
+            const ep = document.getElementById('cq-cfg-embed-provider').value || 'same';
+            const provider = getEffectiveEmbedProviderKey();
+            const rawKey = ep === 'same'
+                ? document.getElementById('cq-cfg-key').value.trim()
+                : document.getElementById('cq-cfg-embed-key').value.trim();
+            const rawBase = ep === 'same'
+                ? document.getElementById('cq-cfg-base').value.trim()
+                : document.getElementById('cq-cfg-embed-base').value.trim();
+            const embedModel = getUserscriptSelectValue('cq-cfg-embed-model', PROVIDER_DEFAULTS[provider].embedModel);
+            if (!rawKey) {
+                showToast('请先填 Key', `请先填入${ep === 'same' ? '总结' : '向量'}接口 API Key`, 'warn');
+                return;
+            }
+            const mismatch = checkUserscriptKeyMismatch(provider, rawKey);
+            if (mismatch) showToast('密钥前缀提醒', mismatch, 'warn');
+
+            const resolved = resolveApiEndpoint(provider, rawKey, rawBase);
+            btn.disabled = true;
+            btn.textContent = '⏳';
+            const t0 = Date.now();
+            try {
+                let dim = 0;
+                if (resolved.useOpenAI) {
+                    const payload = { model: embedModel, input: '测试记忆向量连通性' };
+                    if (resolved.provider === 'siliconflow') payload.encoding_format = 'float';
+                    const res = await safeFetch(`${resolved.base}/embeddings`, {
+                        method: 'POST',
+                        timeout: 25000,
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resolved.key}` },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
+                    const data = await res.json();
+                    const emb = data.data?.[0]?.embedding;
+                    if (!Array.isArray(emb) || !emb.length) throw new Error('未返回有效向量');
+                    dim = emb.length;
+                } else {
+                    const res = await safeFetch(`${resolved.base}/v1beta/models/${embedModel}:embedContent?key=${encodeURIComponent(resolved.key)}`, {
+                        method: 'POST',
+                        timeout: 25000,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ model: `models/${embedModel}`, content: { parts: [{ text: '测试记忆向量连通性' }] } })
+                    });
+                    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
+                    const data = await res.json();
+                    const vals = data.embedding?.values;
+                    if (!Array.isArray(vals) || !vals.length) throw new Error('未返回有效向量');
+                    dim = vals.length;
+                }
+                showToast('向量接口测试通过', `[${embedModel}] ${dim} 维 (${Date.now() - t0}ms)`);
+            } catch (err) {
+                showToast('向量接口测试失败', err.message, 'err');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🧪 测试';
+            }
+        });
 
         pill.addEventListener('click', () => {
             state.panelOpen = !state.panelOpen;
@@ -1172,34 +1562,40 @@
         });
 
         document.getElementById('cq-btn-save-cfg').addEventListener('click', async () => {
-            state.apiProvider = document.getElementById('cq-cfg-provider').value || 'gemini';
-            state.geminiKey = document.getElementById('cq-cfg-key').value.trim();
-            state.embedProvider = document.getElementById('cq-cfg-embed-provider').value || 'same';
-            state.embedKey = document.getElementById('cq-cfg-embed-key').value.trim();
-            state.embedBase = document.getElementById('cq-cfg-embed-base').value.trim();
-            const effEmbedProv = state.embedProvider === 'same' ? state.apiProvider : state.embedProvider;
-            state.chatModel = document.getElementById('cq-cfg-chat-model').value || (state.apiProvider === 'siliconflow' ? 'Qwen/Qwen2.5-7B-Instruct' : 'gemini-2.5-flash');
-            state.embedModel = document.getElementById('cq-cfg-embed-model').value || (effEmbedProv === 'siliconflow' ? 'BAAI/bge-m3' : 'text-embedding-004');
-            state.rerankEnabled = document.getElementById('cq-cfg-rerank-enabled').checked;
-            state.rerankModel = document.getElementById('cq-cfg-rerank-model').value || 'BAAI/bge-reranker-v2-m3';
-            if (state.apiProvider === 'siliconflow') {
-                if (!state.geminiBase || state.geminiBase.includes('generativelanguage.googleapis.com')) {
-                    state.geminiBase = 'https://api.siliconflow.cn/v1';
-                }
+            const prov = normalizeProvider(document.getElementById('cq-cfg-provider').value);
+            const ep = document.getElementById('cq-cfg-embed-provider').value || 'same';
+            const effEmbedProv = ep === 'same' ? prov : normalizeProvider(ep);
+
+            saveUserscriptChatFormToProfile(prov);
+            if (ep !== 'same') {
+                saveUserscriptEmbedFormToProfile(effEmbedProv);
             } else {
-                if (!state.geminiBase || state.geminiBase.includes('api.siliconflow.cn')) {
-                    state.geminiBase = 'https://generativelanguage.googleapis.com';
-                }
+                state.embedProfiles[prov] = {
+                    ...state.embedProfiles[prov],
+                    model: getUserscriptSelectValue('cq-cfg-embed-model', PROVIDER_DEFAULTS[prov].embedModel),
+                    rerankModel: getUserscriptSelectValue('cq-cfg-rerank-model', PROVIDER_DEFAULTS[prov].rerankModel)
+                };
             }
-            if (state.embedProvider === 'siliconflow') {
-                if (!state.embedBase || state.embedBase.includes('generativelanguage.googleapis.com')) {
-                    state.embedBase = 'https://api.siliconflow.cn/v1';
-                }
-            } else if (state.embedProvider === 'gemini') {
-                if (!state.embedBase || state.embedBase.includes('api.siliconflow.cn')) {
-                    state.embedBase = 'https://generativelanguage.googleapis.com';
-                }
+
+            state.apiProvider = prov;
+            state.geminiKey = state.chatProfiles[prov].key;
+            state.geminiBase = state.chatProfiles[prov].base || PROVIDER_DEFAULTS[prov].base;
+            state.chatModel = state.chatProfiles[prov].model || PROVIDER_DEFAULTS[prov].chatModel;
+
+            state.embedProvider = ep;
+            if (ep !== 'same') {
+                state.embedKey = state.embedProfiles[effEmbedProv].key;
+                state.embedBase = state.embedProfiles[effEmbedProv].base || PROVIDER_DEFAULTS[effEmbedProv].base;
+                state.embedModel = state.embedProfiles[effEmbedProv].model || PROVIDER_DEFAULTS[effEmbedProv].embedModel;
+                state.rerankModel = state.embedProfiles[effEmbedProv].rerankModel || PROVIDER_DEFAULTS[effEmbedProv].rerankModel;
+            } else {
+                state.embedKey = '';
+                state.embedBase = PROVIDER_DEFAULTS[prov].base;
+                state.embedModel = state.embedProfiles[prov].model || PROVIDER_DEFAULTS[prov].embedModel;
+                state.rerankModel = state.embedProfiles[prov].rerankModel || PROVIDER_DEFAULTS[prov].rerankModel;
             }
+
+            state.rerankEnabled = document.getElementById('cq-cfg-rerank-enabled').checked;
             state.githubPat = document.getElementById('cq-cfg-pat').value.trim();
             state.githubRepo = document.getElementById('cq-cfg-repo').value.trim();
             saveConfig();
