@@ -5024,8 +5024,47 @@ function bindEvents() {
         }
     });
 
+    let chatTestState = null;
+    let embedTestState = null;
+
+    function abortApiTestState(cur, btnId, defaultBtnText, statusId, reasonMsg) {
+        if (!cur) return;
+        cur.manualAbort = true;
+        clearTimeout(cur.timer);
+        if (cur.rTimer) clearTimeout(cur.rTimer);
+        cur.controller.abort();
+        if (cur.rController) cur.rController.abort();
+        const btn = document.getElementById(btnId);
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = defaultBtnText;
+            btn.style.color = '';
+        }
+        if (reasonMsg) setApiTestStatus(statusId, 'warn', reasonMsg);
+    }
+
+    function abortChatApiTest(reasonMsg) {
+        const cur = chatTestState;
+        if (!cur) return false;
+        chatTestState = null;
+        abortApiTestState(cur, 'btn-test-chat-api', '🧪 测试对话', 'chat-api-test-status', reasonMsg);
+        return true;
+    }
+
+    function abortEmbedApiTest(reasonMsg) {
+        const cur = embedTestState;
+        if (!cur) return false;
+        embedTestState = null;
+        abortApiTestState(cur, 'btn-test-embed-api', '🧪 测试向量', 'embed-api-test-status', reasonMsg);
+        return true;
+    }
+
     // 1A 真实对话/总结接口测试
     document.getElementById('btn-test-chat-api').addEventListener('click', async () => {
+        if (chatTestState) {
+            abortChatApiTest('⏹️ 已取消对话测试');
+            return;
+        }
         const btn = document.getElementById('btn-test-chat-api');
         const provider = normalizeProvider(document.getElementById('cfg-api-provider').value);
         const rawKey = document.getElementById('cfg-gemini-key').value.trim();
@@ -5037,17 +5076,19 @@ function bindEvents() {
             return;
         }
         const mismatch = checkKeyProviderMismatch(provider, rawKey);
-        if (mismatch) {
-            setApiTestStatus('chat-api-test-status', 'warn', `⚠️ ${mismatch}`);
-        } else {
-            setApiTestStatus('chat-api-test-status', '', '');
-        }
-
         const endpoint = resolveApiEndpoint(provider, rawKey, rawBase);
-        btn.disabled = true;
-        btn.textContent = '⏳ 测试中...';
+
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 25000);
+        const curState = { controller, timer: null, manualAbort: false, timedOut: false };
+        chatTestState = curState;
+        curState.timer = setTimeout(() => {
+            curState.timedOut = true;
+            controller.abort();
+        }, 25000);
+
+        btn.textContent = '⏹️ 取消测试';
+        btn.style.color = 'var(--color-danger)';
+        setApiTestStatus('chat-api-test-status', 'warn', `⏳ 正在向 [${model}] 发送测试请求...（可点击右侧「取消测试」随时中断）${mismatch ? ` ｜ ⚠️ ${mismatch}` : ''}`);
         const startMs = Date.now();
         try {
             let replyText = '';
@@ -5097,23 +5138,33 @@ function bindEvents() {
                     if (blockReason) throw new Error(`模型返回为空 (${blockReason})`);
                 }
             }
+            if (curState.manualAbort) return;
             const costMs = Date.now() - startMs;
             const okMsg = `✅ 对话推理测试通过！模型 [${model}] 耗时 ${costMs}ms，回复：「${(replyText || 'OK').slice(0, 40)}」`;
             setApiTestStatus('chat-api-test-status', mismatch ? 'warn' : 'ok', mismatch ? `${okMsg}（注：${mismatch}）` : okMsg);
             showToast('对话接口可用', `[${model}] 真实响应成功 (${costMs}ms)`, 'success');
         } catch (err) {
-            const errMsg = err.name === 'AbortError' ? '请求超时 (25s)，上游节点响应过慢或被墙' : err.message;
+            if (curState.manualAbort) return;
+            const errMsg = (curState.timedOut || err.name === 'AbortError') ? '请求超时 (25s)，上游节点响应过慢或被墙' : err.message;
             setApiTestStatus('chat-api-test-status', 'err', `❌ 测试失败 (${model})：${errMsg}`);
             showToast('对话测试失败', errMsg, 'error');
         } finally {
-            clearTimeout(timer);
-            btn.disabled = false;
-            btn.textContent = '🧪 测试对话';
+            clearTimeout(curState.timer);
+            if (chatTestState === curState) {
+                chatTestState = null;
+                btn.disabled = false;
+                btn.textContent = '🧪 测试对话';
+                btn.style.color = '';
+            }
         }
     });
 
     // 1B 真实向量 / Rerank 接口测试
     document.getElementById('btn-test-embed-api').addEventListener('click', async () => {
+        if (embedTestState) {
+            abortEmbedApiTest('⏹️ 已取消向量测试');
+            return;
+        }
         const btn = document.getElementById('btn-test-embed-api');
         const ep = document.getElementById('cfg-embed-provider').value || 'same';
         const provider = ep === 'same'
@@ -5136,10 +5187,17 @@ function bindEvents() {
         const mismatch = checkKeyProviderMismatch(provider, rawKey);
         const endpoint = resolveApiEndpoint(provider, rawKey, rawBase);
 
-        btn.disabled = true;
-        btn.textContent = '⏳ 测试中...';
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 25000);
+        const curState = { controller, timer: null, rController: null, rTimer: null, manualAbort: false, timedOut: false, rTimedOut: false };
+        embedTestState = curState;
+        curState.timer = setTimeout(() => {
+            curState.timedOut = true;
+            controller.abort();
+        }, 25000);
+
+        btn.textContent = '⏹️ 取消测试';
+        btn.style.color = 'var(--color-danger)';
+        setApiTestStatus('embed-api-test-status', 'warn', `⏳ 正在测试向量 [${embedModel}]...（可点击右侧「取消测试」随时中断）${mismatch ? ` ｜ ⚠️ ${mismatch}` : ''}`);
         const startMs = Date.now();
         try {
             let dim = 0;
@@ -5177,14 +5235,21 @@ function bindEvents() {
                 dim = vals.length;
             }
 
+            if (curState.manualAbort) return;
             const embedMs = Date.now() - startMs;
             let statusType = mismatch ? 'warn' : 'ok';
             let statusMsg = `✅ 向量测试通过！[${embedModel}] 返回 ${dim} 维 (${embedMs}ms)`;
 
             if (rerankEnabled) {
                 if (endpoint.useOpenAI) {
+                    setApiTestStatus('embed-api-test-status', 'warn', `⏳ 向量 [${embedModel}] 已通过 (${dim} 维)，正在测试 Rerank [${rerankModel}]...（可点击取消）`);
                     const rCtrl = new AbortController();
-                    const rTimer = setTimeout(() => rCtrl.abort(), 20000);
+                    curState.rController = rCtrl;
+                    curState.rTimedOut = false;
+                    curState.rTimer = setTimeout(() => {
+                        curState.rTimedOut = true;
+                        rCtrl.abort();
+                    }, 20000);
                     try {
                         const rStart = Date.now();
                         const rRes = await fetch(`${endpoint.base}/rerank`, {
@@ -5207,10 +5272,13 @@ function bindEvents() {
                         if (!Array.isArray(rData.results)) throw new Error('缺少 results 数组');
                         statusMsg += ` ｜ ✅ Rerank [${rerankModel}] 通过 (${Date.now() - rStart}ms)`;
                     } catch (rErr) {
+                        if (curState.manualAbort) throw rErr;
                         statusType = 'warn';
-                        statusMsg += ` ｜ ⚠️ Rerank 测试未通过 (${rErr.name === 'AbortError' ? '超时' : rErr.message})`;
+                        statusMsg += ` ｜ ⚠️ Rerank 测试未通过 (${(curState.rTimedOut || rErr.name === 'AbortError') ? '超时' : rErr.message})`;
                     } finally {
-                        clearTimeout(rTimer);
+                        clearTimeout(curState.rTimer);
+                        curState.rController = null;
+                        curState.rTimer = null;
                     }
                 } else {
                     statusType = 'warn';
@@ -5218,17 +5286,24 @@ function bindEvents() {
                 }
             }
 
+            if (curState.manualAbort) return;
             if (mismatch) statusMsg += ` ｜ 提示：${mismatch}`;
             setApiTestStatus('embed-api-test-status', statusType, statusMsg);
             showToast(statusType === 'ok' ? '向量接口可用' : '向量测试完成 (含提示)', `${embedModel} (${dim} 维)`, statusType === 'ok' ? 'success' : 'warning');
         } catch (err) {
-            const errMsg = err.name === 'AbortError' ? '请求超时 (25s)' : err.message;
+            if (curState.manualAbort) return;
+            const errMsg = (curState.timedOut || err.name === 'AbortError') ? '请求超时 (25s)' : err.message;
             setApiTestStatus('embed-api-test-status', 'err', `❌ 向量测试失败 (${embedModel})：${errMsg}`);
             showToast('向量测试失败', errMsg, 'error');
         } finally {
-            clearTimeout(timer);
-            btn.disabled = false;
-            btn.textContent = '🧪 测试向量';
+            clearTimeout(curState.timer);
+            if (curState.rTimer) clearTimeout(curState.rTimer);
+            if (embedTestState === curState) {
+                embedTestState = null;
+                btn.disabled = false;
+                btn.textContent = '🧪 测试向量';
+                btn.style.color = '';
+            }
         }
     });
 
@@ -5237,15 +5312,18 @@ function bindEvents() {
     }
 
     document.getElementById('cfg-api-provider').addEventListener('change', e => {
+        abortChatApiTest();
         saveDraftChatForm(activeChatProv);
         activeChatProv = normalizeProvider(e.target.value);
         loadDraftChatForm(activeChatProv);
         if ((document.getElementById('cfg-embed-provider').value || 'same') === 'same') {
+            abortEmbedApiTest();
             loadDraftEmbedForm('same');
         }
     });
 
     document.getElementById('cfg-embed-provider').addEventListener('change', e => {
+        abortEmbedApiTest();
         saveDraftEmbedForm(activeEmbedProv);
         activeEmbedProv = e.target.value || 'same';
         toggleEmbedAuthBox(activeEmbedProv);
@@ -5299,6 +5377,8 @@ function bindEvents() {
     });
 
     const closeSettings = () => {
+        abortChatApiTest();
+        abortEmbedApiTest();
         resetSecretInputsVisibility();
         settingsModal.classList.remove('open');
     };

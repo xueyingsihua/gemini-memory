@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.8.3
+// @version      1.8.4
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -57,15 +57,45 @@
 
     // 突破官网 CSP 限制的跨域请求封装
     function safeFetch(url, options = {}) {
+        const signal = options.signal;
+        const makeAbortError = (msg = '请求已中止') => {
+            const err = new Error(msg);
+            err.name = 'AbortError';
+            return err;
+        };
         if (typeof GM_xmlhttpRequest === 'function') {
             return new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
+                if (signal && signal.aborted) {
+                    reject(makeAbortError());
+                    return;
+                }
+                let settled = false;
+                let req = null;
+                const cleanupSignal = () => {
+                    if (signal && onSignalAbort) {
+                        signal.removeEventListener('abort', onSignalAbort);
+                    }
+                };
+                const onSignalAbort = () => {
+                    if (settled) return;
+                    settled = true;
+                    cleanupSignal();
+                    try { req?.abort?.(); } catch (_) {}
+                    reject(makeAbortError());
+                };
+                if (signal) {
+                    signal.addEventListener('abort', onSignalAbort, { once: true });
+                }
+                req = GM_xmlhttpRequest({
                     method: options.method || 'GET',
                     url: url,
                     headers: options.headers || {},
                     data: options.body || undefined,
                     timeout: options.timeout || 30000,
                     onload: (res) => {
+                        if (settled) return;
+                        settled = true;
+                        cleanupSignal();
                         if (res.status === 0) {
                             reject(new Error('网络连接失败或被拦截 (status 0)，请检查代理或脚本 @connect 权限'));
                             return;
@@ -77,9 +107,24 @@
                             json: async () => JSON.parse(res.responseText)
                         });
                     },
-                    onerror: (err) => reject(new Error(err?.error || err?.statusText || '网络请求失败（请检查代理或 @connect 权限）')),
-                    ontimeout: () => reject(new Error(`请求超时 (${Math.round((options.timeout || 30000) / 1000)}s)，上游节点响应过慢或被墙`)),
-                    onabort: () => reject(new Error('请求已中止'))
+                    onerror: (err) => {
+                        if (settled) return;
+                        settled = true;
+                        cleanupSignal();
+                        reject(new Error(err?.error || err?.statusText || '网络请求失败（请检查代理或 @connect 权限）'));
+                    },
+                    ontimeout: () => {
+                        if (settled) return;
+                        settled = true;
+                        cleanupSignal();
+                        reject(new Error(`请求超时 (${Math.round((options.timeout || 30000) / 1000)}s)，上游节点响应过慢或被墙`));
+                    },
+                    onabort: () => {
+                        if (settled) return;
+                        settled = true;
+                        cleanupSignal();
+                        reject(makeAbortError());
+                    }
                 });
             });
         }
@@ -1397,18 +1442,57 @@
         });
 
         // 事件监听
+        let cqChatTestState = null;
+        let cqEmbedTestState = null;
+
+        function abortCqTestState(cur, btnId, defaultBtnText, statusId, reasonMsg) {
+            if (!cur) return;
+            cur.manualAbort = true;
+            clearTimeout(cur.timer);
+            if (cur.rTimer) clearTimeout(cur.rTimer);
+            cur.controller.abort();
+            if (cur.rController) cur.rController.abort();
+            const btn = document.getElementById(btnId);
+            if (btn) {
+                btn.disabled = false;
+                btn.textContent = defaultBtnText;
+                btn.style.color = '';
+                btn.style.borderColor = '';
+            }
+            if (reasonMsg) setUserscriptTestStatus(statusId, 'warn', reasonMsg);
+        }
+
+        function abortCqChatTest(reasonMsg) {
+            const cur = cqChatTestState;
+            if (!cur) return false;
+            cqChatTestState = null;
+            abortCqTestState(cur, 'cq-btn-test-chat', '🧪 测试', 'cq-chat-test-status', reasonMsg);
+            return true;
+        }
+
+        function abortCqEmbedTest(reasonMsg) {
+            const cur = cqEmbedTestState;
+            if (!cur) return false;
+            cqEmbedTestState = null;
+            abortCqTestState(cur, 'cq-btn-test-embed', '🧪 测试', 'cq-embed-test-status', reasonMsg);
+            return true;
+        }
+
         document.getElementById('cq-cfg-provider').addEventListener('change', e => {
+            abortCqChatTest();
             saveUserscriptChatFormToProfile(uiActiveChatProv);
             uiActiveChatProv = normalizeProvider(e.target.value);
             loadUserscriptChatProfileToForm(uiActiveChatProv);
             setUserscriptTestStatus('cq-chat-test-status', '', '');
             if ((document.getElementById('cq-cfg-embed-provider').value || 'same') === 'same') {
+                abortCqEmbedTest();
                 loadUserscriptEmbedProfileToForm('same');
                 setUserscriptTestStatus('cq-embed-test-status', '', '');
             }
         });
 
         document.getElementById('cq-cfg-embed-provider').addEventListener('change', e => {
+            abortCqEmbedTest();
             saveUserscriptEmbedFormToProfile(uiActiveEmbedProv);
             uiActiveEmbedProv = e.target.value || 'same';
             toggleUserscriptEmbedBox();
@@ -1499,6 +1583,10 @@
         document.getElementById('cq-btn-fetch-embed-models').addEventListener('click', () => fetchUserscriptModelsFor('embed'));
 
         document.getElementById('cq-btn-test-chat').addEventListener('click', async () => {
+            if (cqChatTestState) {
+                abortCqChatTest('⏹️ 已取消对话测试');
+                return;
+            }
             const btn = document.getElementById('cq-btn-test-chat');
             const provider = normalizeProvider(document.getElementById('cq-cfg-provider').value);
             const rawKey = document.getElementById('cq-cfg-key').value.trim();
@@ -1513,9 +1601,18 @@
             if (mismatch) showToast('密钥前缀提醒', mismatch, 'warn');
 
             const resolved = resolveApiEndpoint(provider, rawKey, rawBase);
-            btn.disabled = true;
-            btn.textContent = '⏳';
-            setUserscriptTestStatus('cq-chat-test-status', 'warn', `⏳ 正在向 [${model}] 发送测试请求...`);
+            const controller = new AbortController();
+            const curState = { controller, timer: null, manualAbort: false, timedOut: false };
+            cqChatTestState = curState;
+            curState.timer = setTimeout(() => {
+                curState.timedOut = true;
+                controller.abort();
+            }, 25000);
+
+            btn.textContent = '⏹️ 取消';
+            btn.style.color = '#d9534f';
+            btn.style.borderColor = '#d9534f';
+            setUserscriptTestStatus('cq-chat-test-status', 'warn', `⏳ 正在向 [${model}] 发送测试请求...（可点击「取消」立即中断）${mismatch ? ` ｜ ⚠️ ${mismatch}` : ''}`);
             const t0 = Date.now();
             try {
                 let reply = '';
@@ -1523,6 +1620,7 @@
                     const res = await safeFetch(`${resolved.base}/chat/completions`, {
                         method: 'POST',
                         timeout: 25000,
+                        signal: controller.signal,
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resolved.key}` },
                         body: JSON.stringify({ model, messages: [{ role: 'user', content: '请仅回复OK两个字母' }], max_tokens: 512 })
                     });
@@ -1534,6 +1632,7 @@
                     const res = await safeFetch(`${resolved.base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(resolved.key)}`, {
                         method: 'POST',
                         timeout: 25000,
+                        signal: controller.signal,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             contents: [{ role: 'user', parts: [{ text: '请仅回复OK两个字母' }] }],
@@ -1556,20 +1655,35 @@
                         throw new Error(`模型返回为空 (${blockReason || 'empty'})`);
                     }
                 }
+                if (curState.manualAbort) return;
                 const costMs = Date.now() - t0;
                 const okMsg = `✅ 测试通过！[${model}] ${costMs}ms，回复：「${reply.slice(0, 28)}」${mismatch ? `（注意：${mismatch}）` : ''}`;
                 setUserscriptTestStatus('cq-chat-test-status', mismatch ? 'warn' : 'ok', okMsg);
                 showToast('总结接口测试通过', `[${model}] ${costMs}ms，回复: ${reply.slice(0, 24)}`);
             } catch (err) {
-                setUserscriptTestStatus('cq-chat-test-status', 'err', `❌ 测试失败 (${model})：${err.message}`);
-                showToast('总结接口测试失败', err.message, 'err');
+                if (curState.manualAbort) return;
+                const errMsg = (curState.timedOut || err.name === 'AbortError')
+                    ? '请求超时 (25s)，上游节点响应过慢或被墙'
+                    : err.message;
+                setUserscriptTestStatus('cq-chat-test-status', 'err', `❌ 测试失败 (${model})：${errMsg}`);
+                showToast('总结接口测试失败', errMsg, 'err');
             } finally {
-                btn.disabled = false;
-                btn.textContent = '🧪 测试';
+                clearTimeout(curState.timer);
+                if (cqChatTestState === curState) {
+                    cqChatTestState = null;
+                    btn.disabled = false;
+                    btn.textContent = '🧪 测试';
+                    btn.style.color = '';
+                    btn.style.borderColor = '';
+                }
             }
         });
 
         document.getElementById('cq-btn-test-embed').addEventListener('click', async () => {
+            if (cqEmbedTestState) {
+                abortCqEmbedTest('⏹️ 已取消向量测试');
+                return;
+            }
             const btn = document.getElementById('cq-btn-test-embed');
             const ep = document.getElementById('cq-cfg-embed-provider').value || 'same';
             const provider = getEffectiveEmbedProviderKey();
@@ -1593,9 +1707,18 @@
             if (mismatch) showToast('密钥前缀提醒', mismatch, 'warn');
 
             const resolved = resolveApiEndpoint(provider, rawKey, rawBase);
-            btn.disabled = true;
-            btn.textContent = '⏳';
-            setUserscriptTestStatus('cq-embed-test-status', 'warn', `⏳ 正在测试向量 [${embedModel}]...`);
+            const controller = new AbortController();
+            const curState = { controller, timer: null, rController: null, rTimer: null, manualAbort: false, timedOut: false, rTimedOut: false };
+            cqEmbedTestState = curState;
+            curState.timer = setTimeout(() => {
+                curState.timedOut = true;
+                controller.abort();
+            }, 25000);
+
+            btn.textContent = '⏹️ 取消';
+            btn.style.color = '#d9534f';
+            btn.style.borderColor = '#d9534f';
+            setUserscriptTestStatus('cq-embed-test-status', 'warn', `⏳ 正在测试向量 [${embedModel}]...（可点击「取消」立即中断）${mismatch ? ` ｜ ⚠️ ${mismatch}` : ''}`);
             const t0 = Date.now();
             try {
                 let dim = 0;
@@ -1605,6 +1728,7 @@
                     const res = await safeFetch(`${resolved.base}/embeddings`, {
                         method: 'POST',
                         timeout: 25000,
+                        signal: controller.signal,
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resolved.key}` },
                         body: JSON.stringify(payload)
                     });
@@ -1617,6 +1741,7 @@
                     const res = await safeFetch(`${resolved.base}/v1beta/models/${embedModel}:embedContent?key=${encodeURIComponent(resolved.key)}`, {
                         method: 'POST',
                         timeout: 25000,
+                        signal: controller.signal,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ model: `models/${embedModel}`, content: { parts: [{ text: '测试记忆向量连通性' }] } })
                     });
@@ -1627,16 +1752,26 @@
                     dim = vals.length;
                 }
 
+                if (curState.manualAbort) return;
                 let statusType = mismatch ? 'warn' : 'ok';
                 let statusMsg = `✅ 向量通过！[${embedModel}] ${dim} 维 (${Date.now() - t0}ms)`;
 
                 if (rerankEnabled) {
                     if (resolved.useOpenAI) {
+                        setUserscriptTestStatus('cq-embed-test-status', 'warn', `⏳ 向量 [${embedModel}] ${dim} 维通过，正在测试 Rerank [${rerankModel}]...（可点击取消）`);
+                        const rCtrl = new AbortController();
+                        curState.rController = rCtrl;
+                        curState.rTimedOut = false;
+                        curState.rTimer = setTimeout(() => {
+                            curState.rTimedOut = true;
+                            rCtrl.abort();
+                        }, 20000);
                         const r0 = Date.now();
                         try {
                             const rRes = await safeFetch(`${resolved.base}/rerank`, {
                                 method: 'POST',
                                 timeout: 20000,
+                                signal: rCtrl.signal,
                                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resolved.key}` },
                                 body: JSON.stringify({
                                     model: rerankModel,
@@ -1651,24 +1786,42 @@
                             if (!Array.isArray(rData.results)) throw new Error('缺少 results 数组');
                             statusMsg += ` ｜ ✅ Rerank [${rerankModel}] ${Date.now() - r0}ms`;
                         } catch (rErr) {
+                            if (curState.manualAbort) throw rErr;
                             statusType = 'warn';
-                            statusMsg += ` ｜ ⚠️ Rerank 失败 (${rErr.message})`;
+                            const rErrMsg = (curState.rTimedOut || rErr.name === 'AbortError') ? '超时' : rErr.message;
+                            statusMsg += ` ｜ ⚠️ Rerank 失败 (${rErrMsg})`;
+                        } finally {
+                            clearTimeout(curState.rTimer);
+                            curState.rController = null;
+                            curState.rTimer = null;
                         }
                     } else {
                         statusType = 'warn';
                         statusMsg += ' ｜ 💡 注：Gemini 原生通道不支持 Rerank';
                     }
                 }
+                if (curState.manualAbort) return;
                 if (mismatch) statusMsg += ` ｜ 注意：${mismatch}`;
 
                 setUserscriptTestStatus('cq-embed-test-status', statusType, statusMsg);
                 showToast(statusType === 'ok' ? '向量接口测试通过' : '向量测试完成 (含提示)', `[${embedModel}] ${dim} 维`, statusType === 'ok' ? 'ok' : 'warn');
             } catch (err) {
-                setUserscriptTestStatus('cq-embed-test-status', 'err', `❌ 向量失败 (${embedModel})：${err.message}`);
-                showToast('向量接口测试失败', err.message, 'err');
+                if (curState.manualAbort) return;
+                const errMsg = (curState.timedOut || err.name === 'AbortError')
+                    ? '请求超时 (25s)，上游节点响应过慢或被墙'
+                    : err.message;
+                setUserscriptTestStatus('cq-embed-test-status', 'err', `❌ 向量失败 (${embedModel})：${errMsg}`);
+                showToast('向量接口测试失败', errMsg, 'err');
             } finally {
-                btn.disabled = false;
-                btn.textContent = '🧪 测试';
+                clearTimeout(curState.timer);
+                if (curState.rTimer) clearTimeout(curState.rTimer);
+                if (cqEmbedTestState === curState) {
+                    cqEmbedTestState = null;
+                    btn.disabled = false;
+                    btn.textContent = '🧪 测试';
+                    btn.style.color = '';
+                    btn.style.borderColor = '';
+                }
             }
         });
 
