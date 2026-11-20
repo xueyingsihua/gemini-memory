@@ -1875,8 +1875,8 @@
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:2px;">
                     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                         <select id="quick-ai-mode" class="chuqing-input" style="width:auto;max-width:100%;height:28px;padding:0 8px;font-size:12px;" title="选择归档入库前的 AI 处理模式">
-                            <option value="raw">📝 原样入库 (不调 AI)</option>
                             <option value="tag_only">🏷️ 仅 AI 打标签/补事件 (保留原文)</option>
+                            <option value="raw">📝 原样入库 (不调 AI)</option>
                             <option value="summarize">✨ AI 提炼 100 字摘要并补标签</option>
                         </select>
                         <input type="text" id="quick-event-input" class="chuqing-input" placeholder="事件类型 (如: 日常/约定)" style="width:140px;height:28px;padding:2px 8px;font-size:12px;">
@@ -2515,7 +2515,7 @@ const state = {
         minScore: 0.38,
         autoTurns: 5,
         autoArchiveEnabled: false,
-        quickArchiveMode: 'raw',
+        quickArchiveMode: 'tag_only',
         githubPat: '',
         githubRepo: ''
     },
@@ -3306,8 +3306,8 @@ async function summarizeAndTagWithAI(rawText) {
 // 仅让 AI 生成分类标签与事件类型，严格保留用户原文一字不改
 async function tagAndClassifyWithAI(rawText) {
     const tagPoolStr = state.globalProfile.customTags.join('、');
-    const sysPrompt = `你是一个长期记忆分类助手。请阅读用户提供的原文，绝对不要改写、总结、缩写或复述原文，只需挑选 2~3 个最贴合的分类标签并归纳 1 个简短事件类型。
-优先复用以下现有标签池中的标签：[${tagPoolStr}]；仅当现有标签都不够准确时，最多可额外新增 1 个简短标签（不要带 # 号）。
+    const sysPrompt = `你是一个长期记忆分类助手。请阅读用户提供的原文，绝对不要改写、总结、缩写或复述原文，只需挑选 2~4 个最贴合的分类标签并归纳 1 个简短事件类型。
+请优先参考并复用以下现有标签池中的标签：[${tagPoolStr}]；如果现有标签不足以概括原文关键主题或专有概念，请自主判断并额外补充 1~2 个简短准确的新标签（2~6字为宜，不要带 # 号）。
 请严格只输出如下 JSON 格式（不要包含任何解释或 markdown 代码块）：
 {"tags": ["标签1", "标签2"], "eventType": "日常/节日/约定/重要事件"}`;
 
@@ -3730,7 +3730,7 @@ function renderAllUI() {
     const modeSelect = document.getElementById('quick-ai-mode');
     if (modeSelect) {
         const savedMode = state.config.quickArchiveMode;
-        modeSelect.value = ['raw', 'tag_only', 'summarize'].includes(savedMode) ? savedMode : 'raw';
+        modeSelect.value = ['raw', 'tag_only', 'summarize'].includes(savedMode) ? savedMode : 'tag_only';
     }
 }
 
@@ -4410,13 +4410,13 @@ function bindEvents() {
     // 伴侣台：AI 入库模式持久化与生成向量并归档 GitHub
     document.getElementById('quick-ai-mode').addEventListener('change', (e) => {
         const mode = e.target.value;
-        state.config.quickArchiveMode = ['raw', 'tag_only', 'summarize'].includes(mode) ? mode : 'raw';
+        state.config.quickArchiveMode = ['raw', 'tag_only', 'summarize'].includes(mode) ? mode : 'tag_only';
         saveLocalState();
     });
 
     document.getElementById('btn-submit-archive').addEventListener('click', async () => {
         const rawText = document.getElementById('quick-archive-text').value;
-        const aiMode = document.getElementById('quick-ai-mode').value || 'raw';
+        const aiMode = document.getElementById('quick-ai-mode').value || 'tag_only';
         const eventName = document.getElementById('quick-event-input').value;
         await createAndPushMemorySlice({
             rawText,

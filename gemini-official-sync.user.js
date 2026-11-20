@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.8.0
+// @version      1.8.1
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -206,7 +206,7 @@
         persona: '',
         branchPersonas: {},
         selectedTags: new Set(['日常点滴']),
-        archiveMode: 'summarize',
+        archiveMode: 'tag_only',
         panelOpen: false
     };
 
@@ -218,7 +218,7 @@
             state.embedProvider = state.embedProvider || 'same';
             state.embedKey = state.embedKey || '';
             state.embedBase = state.embedBase || 'https://api.siliconflow.cn/v1';
-            state.archiveMode = ['raw', 'tag_only', 'summarize'].includes(parsed.archiveMode) ? parsed.archiveMode : 'summarize';
+            state.archiveMode = ['raw', 'tag_only', 'summarize'].includes(parsed.archiveMode) ? parsed.archiveMode : 'tag_only';
             state.branchPersonas = (parsed.branchPersonas && typeof parsed.branchPersonas === 'object' && !Array.isArray(parsed.branchPersonas))
                 ? parsed.branchPersonas
                 : {};
@@ -931,7 +931,7 @@
     }
 
     async function tagOnlyViaGemini(rawText) {
-        const sys = `请阅读用户提供的原文，绝对不要改写、总结或删减原文内容，只需从现有标签池 [${state.customTags.join('、')}] 中挑选 2~3 个最匹配的标签（仅在现有标签都无法覆盖时最多可自拟 1 个简短标签，不要带 # 号），并归纳 1 个简短事件类型。严格只输出 JSON: {"tags":["标签1","标签2"],"eventType":"日常/节日/约定/重要事件"}`;
+        const sys = `请阅读用户提供的原文，绝对不要改写、总结或删减原文内容，只需挑选 2~4 个最贴合的分类标签并归纳 1 个简短事件类型。请优先参考并复用现有标签池 [${state.customTags.join('、')}]；如果现有标签不足以概括关键主题或专有概念，请自主判断并额外补充 1~2 个简短准确的新标签（2~6字为宜，不要带 # 号）。严格只输出 JSON: {"tags":["标签1","标签2"],"eventType":"日常/节日/约定/重要事件"}`;
         const reply = await callUserscriptChatPrompt(sys, rawText);
         if (reply === null) return { tags: [], eventType: '' };
         try {
@@ -985,8 +985,8 @@
                 <div class="cq-tag-list" id="cq-tag-container"></div>
                 <div class="cq-row" style="margin-top:4px;gap:6px;">
                     <select id="cq-ai-mode" class="cq-select" style="flex:1;min-width:0;font-size:11px;padding:4px 6px;" title="选择归档前 AI 处理方式">
-                        <option value="summarize">✨ AI提炼100字摘要并补标签</option>
                         <option value="tag_only">🏷️ 仅AI打标签/补事件 (保留原文)</option>
+                        <option value="summarize">✨ AI提炼100字摘要并补标签</option>
                         <option value="raw">📝 原样入库 (不调AI)</option>
                     </select>
                     <button class="cq-btn primary" id="cq-btn-oneclick-archive" style="flex-shrink:0;">⚡ 抓对话归档</button>
@@ -1302,7 +1302,7 @@
             document.getElementById('cq-recall-minscore').value = (typeof state.minScore === 'number') ? state.minScore : 0.38;
             const aiModeSel = document.getElementById('cq-ai-mode');
             if (aiModeSel) {
-                aiModeSel.value = ['raw', 'tag_only', 'summarize'].includes(state.archiveMode) ? state.archiveMode : 'summarize';
+                aiModeSel.value = ['raw', 'tag_only', 'summarize'].includes(state.archiveMode) ? state.archiveMode : 'tag_only';
             }
         }
 
@@ -1310,7 +1310,7 @@
 
         document.getElementById('cq-ai-mode').addEventListener('change', e => {
             const m = e.target.value;
-            state.archiveMode = ['raw', 'tag_only', 'summarize'].includes(m) ? m : 'summarize';
+            state.archiveMode = ['raw', 'tag_only', 'summarize'].includes(m) ? m : 'tag_only';
             saveConfig();
         });
 
@@ -1678,7 +1678,7 @@
             btn.disabled = true;
             btn.textContent = '⏳ 正在处理并算向量...';
             try {
-                const mode = document.getElementById('cq-ai-mode').value || 'summarize';
+                const mode = document.getElementById('cq-ai-mode').value || 'tag_only';
                 let finalText = rawText;
                 let finalTags = Array.from(state.selectedTags);
                 let finalEvent = '官网一键归档';
