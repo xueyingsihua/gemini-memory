@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.8.2
+// @version      1.8.3
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -66,6 +66,10 @@
                     data: options.body || undefined,
                     timeout: options.timeout || 30000,
                     onload: (res) => {
+                        if (res.status === 0) {
+                            reject(new Error('网络连接失败或被拦截 (status 0)，请检查代理或脚本 @connect 权限'));
+                            return;
+                        }
                         resolve({
                             ok: res.status >= 200 && res.status < 300,
                             status: res.status,
@@ -73,8 +77,9 @@
                             json: async () => JSON.parse(res.responseText)
                         });
                     },
-                    onerror: (err) => reject(new Error(err?.error || 'Network error')),
-                    ontimeout: () => reject(new Error('Request timeout'))
+                    onerror: (err) => reject(new Error(err?.error || err?.statusText || '网络请求失败（请检查代理或 @connect 权限）')),
+                    ontimeout: () => reject(new Error(`请求超时 (${Math.round((options.timeout || 30000) / 1000)}s)，上游节点响应过慢或被墙`)),
+                    onabort: () => reject(new Error('请求已中止'))
                 });
             });
         }
@@ -294,9 +299,12 @@
                 font-size: 12.5px;
                 -webkit-mask-image:
                     radial-gradient(circle at 44px 0, transparent 6px, black 6.5px),
-                    radial-gradient(circle at 44px 100%, transparent 6px, black 6.5px),
-                    linear-gradient(black, black);
-                -webkit-mask-composite: destination-out, destination-out, source-over;
+                    radial-gradient(circle at 44px 100%, transparent 6px, black 6.5px);
+                -webkit-mask-composite: source-in;
+                mask-image:
+                    radial-gradient(circle at 44px 0, transparent 6px, black 6.5px),
+                    radial-gradient(circle at 44px 100%, transparent 6px, black 6.5px);
+                mask-composite: intersect;
             }
             .cq-ticket-toast::before {
                 content: "✦";
@@ -449,6 +457,33 @@
             .cq-tag.active::before {
                 content: "𝔖 ";
             }
+            .cq-test-status {
+                display: none;
+                font-size: 11px;
+                line-height: 1.4;
+                padding: 6px 8px;
+                border-radius: 5px;
+                border: 1px solid transparent;
+                word-break: break-word;
+            }
+            .cq-test-status.ok {
+                display: block;
+                background: rgba(76, 175, 80, 0.12);
+                border-color: rgba(76, 175, 80, 0.35);
+                color: #2e7d32;
+            }
+            .cq-test-status.err {
+                display: block;
+                background: rgba(217, 83, 79, 0.12);
+                border-color: rgba(217, 83, 79, 0.35);
+                color: #c9302c;
+            }
+            .cq-test-status.warn {
+                display: block;
+                background: rgba(255, 152, 0, 0.12);
+                border-color: rgba(255, 152, 0, 0.35);
+                color: #b26a00;
+            }
             @media (max-width: 600px) {
                 #cq-sync-panel {
                     left: 12px;
@@ -487,9 +522,10 @@
         }
         const el = document.createElement('div');
         el.className = `cq-ticket-toast ${type}`;
-        setSafeHTML(el, `<div style="font-weight:700;margin-bottom:2px;">${escapeHtml(title)}</div><div style="opacity:0.85;">${escapeHtml(msg)}</div>`);
+        setSafeHTML(el, `<div style="font-weight:700;margin-bottom:2px;">${escapeHtml(title)}</div><div style="opacity:0.85;word-break:break-word;">${escapeHtml(msg)}</div>`);
+        el.addEventListener('click', () => el.remove());
         wrap.appendChild(el);
-        setTimeout(() => el.remove(), 3500);
+        setTimeout(() => el.remove(), 4800);
     }
 
     /* ========================================================================
@@ -1039,6 +1075,7 @@
                         <span style="font-size:11px;color:#5d4e46;font-weight:700;">总结模型:</span>
                         <select id="cq-cfg-chat-model" class="cq-select"></select>
                     </div>
+                    <div id="cq-chat-test-status" class="cq-test-status"></div>
                     <hr style="border:none;border-top:1px dashed #d6cbc1;margin:2px 0;">
                     <span style="font-size:11px;color:#5d4e46;font-weight:700;">🧬 向量与重排接口 (Embedding / Rerank)：</span>
                     <div class="cq-row">
@@ -1070,6 +1107,7 @@
                         <span style="font-size:11px;color:#5d4e46;font-weight:700;">重排模型 (Rerank):</span>
                         <select id="cq-cfg-rerank-model" class="cq-select"></select>
                     </div>
+                    <div id="cq-embed-test-status" class="cq-test-status"></div>
                     <hr style="border:none;border-top:1px dashed #d6cbc1;margin:2px 0;">
                     <div class="cq-row" style="gap:4px;">
                         <input type="password" id="cq-cfg-pat" class="cq-input" style="flex:1;" placeholder="GitHub Token (ghp_...)">
@@ -1238,6 +1276,39 @@
             return '';
         }
 
+        function setUserscriptTestStatus(id, type, text) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (!text) {
+                el.className = 'cq-test-status';
+                el.textContent = '';
+                return;
+            }
+            el.className = `cq-test-status ${type}`;
+            el.textContent = text;
+        }
+
+        function formatUserscriptApiError(status, rawText) {
+            let detail = '';
+            try {
+                const parsed = JSON.parse(rawText);
+                detail = parsed?.error?.message || parsed?.message || '';
+            } catch (e) {}
+            detail = (detail || rawText || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+            const lower = `${status} ${detail}`.toLowerCase();
+            let hint = '';
+            if (status === 503 || lower.includes('overload') || lower.includes('unavailable') || lower.includes('capacity')) {
+                hint = '（上游机房过载繁忙）';
+            } else if (status === 429 || lower.includes('rate') || lower.includes('quota') || lower.includes('limit')) {
+                hint = '（触发限流或额度耗尽）';
+            } else if (status === 401 || status === 403 || lower.includes('invalid') || lower.includes('api key')) {
+                hint = '（Key 无效或无权限）';
+            } else if (status === 404 || lower.includes('not found')) {
+                hint = '（模型或 Base URL 不存在）';
+            }
+            return `HTTP ${status}${hint}${detail ? `: ${detail}` : ''}`;
+        }
+
         function renderPanelState() {
             ensureProviderProfiles(state);
             const sel = document.getElementById('cq-branch-select');
@@ -1330,8 +1401,10 @@
             saveUserscriptChatFormToProfile(uiActiveChatProv);
             uiActiveChatProv = normalizeProvider(e.target.value);
             loadUserscriptChatProfileToForm(uiActiveChatProv);
+            setUserscriptTestStatus('cq-chat-test-status', '', '');
             if ((document.getElementById('cq-cfg-embed-provider').value || 'same') === 'same') {
                 loadUserscriptEmbedProfileToForm('same');
+                setUserscriptTestStatus('cq-embed-test-status', '', '');
             }
         });
 
@@ -1340,6 +1413,7 @@
             uiActiveEmbedProv = e.target.value || 'same';
             toggleUserscriptEmbedBox();
             loadUserscriptEmbedProfileToForm(uiActiveEmbedProv);
+            setUserscriptTestStatus('cq-embed-test-status', '', '');
         });
 
         async function fetchUserscriptModelsFor(target) {
@@ -1431,6 +1505,7 @@
             const rawBase = document.getElementById('cq-cfg-base').value.trim();
             const model = getUserscriptSelectValue('cq-cfg-chat-model', PROVIDER_DEFAULTS[provider].chatModel);
             if (!rawKey) {
+                setUserscriptTestStatus('cq-chat-test-status', 'warn', '⚠️ 请先填入总结接口 API Key');
                 showToast('请先填 Key', '请先填入总结接口 API Key', 'warn');
                 return;
             }
@@ -1440,8 +1515,10 @@
             const resolved = resolveApiEndpoint(provider, rawKey, rawBase);
             btn.disabled = true;
             btn.textContent = '⏳';
+            setUserscriptTestStatus('cq-chat-test-status', 'warn', `⏳ 正在向 [${model}] 发送测试请求...`);
             const t0 = Date.now();
             try {
+                let reply = '';
                 if (resolved.useOpenAI) {
                     const res = await safeFetch(`${resolved.base}/chat/completions`, {
                         method: 'POST',
@@ -1449,10 +1526,10 @@
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resolved.key}` },
                         body: JSON.stringify({ model, messages: [{ role: 'user', content: '请仅回复OK两个字母' }], max_tokens: 512 })
                     });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
+                    if (!res.ok) throw new Error(formatUserscriptApiError(res.status, await res.text()));
                     const data = await res.json();
-                    const reply = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
-                    showToast('总结接口测试通过', `[${model}] ${Date.now() - t0}ms，回复: ${(reply || 'OK').slice(0, 24)}`);
+                    reply = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
+                    if (!reply && !Array.isArray(data.choices)) throw new Error('接口返回格式异常，缺少 choices');
                 } else {
                     const res = await safeFetch(`${resolved.base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(resolved.key)}`, {
                         method: 'POST',
@@ -1470,13 +1547,21 @@
                             ]
                         })
                     });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
+                    if (!res.ok) throw new Error(formatUserscriptApiError(res.status, await res.text()));
                     const data = await res.json();
                     const parts = data.candidates?.[0]?.content?.parts || [];
-                    const reply = (parts.filter(p => !p.thought).map(p => p.text || '').join('') || parts.map(p => p.text || '').join('')).trim();
-                    showToast('总结接口测试通过', `[${model}] ${Date.now() - t0}ms，回复: ${(reply || 'OK').slice(0, 24)}`);
+                    reply = (parts.filter(p => !p.thought).map(p => p.text || '').join('') || parts.map(p => p.text || '').join('')).trim();
+                    if (!reply) {
+                        const blockReason = data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason;
+                        throw new Error(`模型返回为空 (${blockReason || 'empty'})`);
+                    }
                 }
+                const costMs = Date.now() - t0;
+                const okMsg = `✅ 测试通过！[${model}] ${costMs}ms，回复：「${reply.slice(0, 28)}」${mismatch ? `（注意：${mismatch}）` : ''}`;
+                setUserscriptTestStatus('cq-chat-test-status', mismatch ? 'warn' : 'ok', okMsg);
+                showToast('总结接口测试通过', `[${model}] ${costMs}ms，回复: ${reply.slice(0, 24)}`);
             } catch (err) {
+                setUserscriptTestStatus('cq-chat-test-status', 'err', `❌ 测试失败 (${model})：${err.message}`);
                 showToast('总结接口测试失败', err.message, 'err');
             } finally {
                 btn.disabled = false;
@@ -1495,8 +1580,13 @@
                 ? document.getElementById('cq-cfg-base').value.trim()
                 : document.getElementById('cq-cfg-embed-base').value.trim();
             const embedModel = getUserscriptSelectValue('cq-cfg-embed-model', PROVIDER_DEFAULTS[provider].embedModel);
+            const rerankEnabled = document.getElementById('cq-cfg-rerank-enabled').checked;
+            const rerankModel = getUserscriptSelectValue('cq-cfg-rerank-model', PROVIDER_DEFAULTS[provider].rerankModel);
+
             if (!rawKey) {
-                showToast('请先填 Key', `请先填入${ep === 'same' ? '总结' : '向量'}接口 API Key`, 'warn');
+                const msg = `请先填入${ep === 'same' ? '总结(共用)' : '向量'}接口 API Key`;
+                setUserscriptTestStatus('cq-embed-test-status', 'warn', `⚠️ ${msg}`);
+                showToast('请先填 Key', msg, 'warn');
                 return;
             }
             const mismatch = checkUserscriptKeyMismatch(provider, rawKey);
@@ -1505,6 +1595,7 @@
             const resolved = resolveApiEndpoint(provider, rawKey, rawBase);
             btn.disabled = true;
             btn.textContent = '⏳';
+            setUserscriptTestStatus('cq-embed-test-status', 'warn', `⏳ 正在测试向量 [${embedModel}]...`);
             const t0 = Date.now();
             try {
                 let dim = 0;
@@ -1517,7 +1608,7 @@
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resolved.key}` },
                         body: JSON.stringify(payload)
                     });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
+                    if (!res.ok) throw new Error(formatUserscriptApiError(res.status, await res.text()));
                     const data = await res.json();
                     const emb = data.data?.[0]?.embedding;
                     if (!Array.isArray(emb) || !emb.length) throw new Error('未返回有效向量');
@@ -1529,14 +1620,51 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ model: `models/${embedModel}`, content: { parts: [{ text: '测试记忆向量连通性' }] } })
                     });
-                    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
+                    if (!res.ok) throw new Error(formatUserscriptApiError(res.status, await res.text()));
                     const data = await res.json();
                     const vals = data.embedding?.values;
                     if (!Array.isArray(vals) || !vals.length) throw new Error('未返回有效向量');
                     dim = vals.length;
                 }
-                showToast('向量接口测试通过', `[${embedModel}] ${dim} 维 (${Date.now() - t0}ms)`);
+
+                let statusType = mismatch ? 'warn' : 'ok';
+                let statusMsg = `✅ 向量通过！[${embedModel}] ${dim} 维 (${Date.now() - t0}ms)`;
+
+                if (rerankEnabled) {
+                    if (resolved.useOpenAI) {
+                        const r0 = Date.now();
+                        try {
+                            const rRes = await safeFetch(`${resolved.base}/rerank`, {
+                                method: 'POST',
+                                timeout: 20000,
+                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resolved.key}` },
+                                body: JSON.stringify({
+                                    model: rerankModel,
+                                    query: '晚餐吃什么',
+                                    documents: ['昨晚煮了番茄鸡蛋面', '今天去了公园散步'],
+                                    top_n: 2,
+                                    return_documents: false
+                                })
+                            });
+                            if (!rRes.ok) throw new Error(formatUserscriptApiError(rRes.status, await rRes.text()));
+                            const rData = await rRes.json();
+                            if (!Array.isArray(rData.results)) throw new Error('缺少 results 数组');
+                            statusMsg += ` ｜ ✅ Rerank [${rerankModel}] ${Date.now() - r0}ms`;
+                        } catch (rErr) {
+                            statusType = 'warn';
+                            statusMsg += ` ｜ ⚠️ Rerank 失败 (${rErr.message})`;
+                        }
+                    } else {
+                        statusType = 'warn';
+                        statusMsg += ' ｜ 💡 注：Gemini 原生通道不支持 Rerank';
+                    }
+                }
+                if (mismatch) statusMsg += ` ｜ 注意：${mismatch}`;
+
+                setUserscriptTestStatus('cq-embed-test-status', statusType, statusMsg);
+                showToast(statusType === 'ok' ? '向量接口测试通过' : '向量测试完成 (含提示)', `[${embedModel}] ${dim} 维`, statusType === 'ok' ? 'ok' : 'warn');
             } catch (err) {
+                setUserscriptTestStatus('cq-embed-test-status', 'err', `❌ 向量失败 (${embedModel})：${err.message}`);
                 showToast('向量接口测试失败', err.message, 'err');
             } finally {
                 btn.disabled = false;
