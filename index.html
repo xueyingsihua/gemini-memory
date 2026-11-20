@@ -1163,8 +1163,8 @@
         }
 
         .slice-batch-checkbox {
-            width: 15px;
-            height: 15px;
+            width: 18px;
+            height: 18px;
             accent-color: var(--color-accent);
             cursor: pointer;
             flex-shrink: 0;
@@ -2397,7 +2397,7 @@ const STORAGE_KEYS = {
 
 const PRESET_MODELS = {
     gemini: {
-        chat: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+        chat: ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
         embed: ['text-embedding-004', 'gemini-embedding-001'],
         rerank: ['BAAI/bge-reranker-v2-m3']
     },
@@ -2407,7 +2407,7 @@ const PRESET_MODELS = {
         rerank: ['BAAI/bge-reranker-v2-m3', 'netease-youdao/bce-reranker-base_v1', 'Pro/BAAI/bge-reranker-v2-m3']
     },
     openai: {
-        chat: ['gpt-4o-mini', 'gpt-4o', 'deepseek-chat', 'deepseek-reasoner', 'claude-3-5-sonnet-20241022', 'gemini-2.5-flash'],
+        chat: ['gpt-4o-mini', 'gpt-4o', 'deepseek-chat', 'deepseek-reasoner', 'claude-3-5-sonnet-20241022', 'gemini-3.5-flash-lite'],
         embed: ['text-embedding-3-small', 'text-embedding-3-large', 'BAAI/bge-m3'],
         rerank: ['BAAI/bge-reranker-v2-m3', 'rerank-v3.5']
     }
@@ -2416,7 +2416,7 @@ const PRESET_MODELS = {
 const PROVIDER_DEFAULTS = {
     gemini: {
         base: 'https://generativelanguage.googleapis.com',
-        chatModel: 'gemini-2.5-flash',
+        chatModel: 'gemini-3.5-flash-lite',
         embedModel: 'text-embedding-004',
         rerankModel: 'BAAI/bge-reranker-v2-m3',
         keyPlaceholder: 'Google Gemini API Key (AIzaSy...)',
@@ -2502,7 +2502,7 @@ const state = {
         apiProvider: 'gemini',
         geminiKey: '',
         geminiBase: 'https://generativelanguage.googleapis.com',
-        chatModel: 'gemini-2.5-flash',
+        chatModel: 'gemini-3.5-flash-lite',
         chatProfiles: createDefaultChatProfiles(),
         embedProvider: 'same',
         embedKey: '',
@@ -2529,7 +2529,7 @@ const state = {
     currentBranch: 'main',
     // 分支记忆库缓存: { [branchName]: { slices: [], sha: null } }
     branchCache: {},
-    selectedQuickTags: new Set(['日常点滴']),
+    selectedQuickTags: new Set(),
     drawerFilterTag: '',
     lastRecalledSlices: [],
     turnCounter: 0,
@@ -3165,11 +3165,14 @@ async function loadBranchFromGithub(branchName, showLoader = false) {
 }
 
 // 将当前分支写回 GitHub
-async function pushCurrentBranchToGithub(commitMsg = 'Archive memory slice') {
+async function pushCurrentBranchToGithub(commitMsg = 'Archive memory slice', options = {}) {
+    const { silentToast = false } = options || {};
     saveLocalState();
     renderAllUI();
     if (!isGithubConfigured()) {
-        showToast('记忆已归档 (本地)', '配置 GitHub PAT 后可自动同步至云端私有库', 'info');
+        if (!silentToast) {
+            showToast('记忆已归档 (本地)', '配置 GitHub PAT 后可自动同步至云端私有库', 'info');
+        }
         return;
     }
     const branchName = state.currentBranch;
@@ -3179,7 +3182,9 @@ async function pushCurrentBranchToGithub(commitMsg = 'Archive memory slice') {
     branchData.sha = newSha;
     saveLocalState();
     updateGithubStatusUI(true, `已归档至 branches/${branchName}.json`);
-    showToast('记忆已归档', `成功同步至 GitHub 分支 [${branchName}] (${branchData.slices.length} 条切片)`, 'success');
+    if (!silentToast) {
+        showToast('记忆已归档', `成功同步至 GitHub 分支 [${branchName}] (${branchData.slices.length} 条切片)`, 'success');
+    }
 }
 
 /* ============================================================================
@@ -3221,7 +3226,7 @@ async function callGeminiChat(promptText, systemInstruction = '') {
     }
 
     const base = chatCfg.base;
-    const model = state.config.chatModel.trim() || 'gemini-2.5-flash';
+    const model = state.config.chatModel.trim() || 'gemini-3.5-flash-lite';
     const url = `${base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
 
     const payload = {
@@ -3248,7 +3253,8 @@ async function callGeminiChat(promptText, systemInstruction = '') {
         throw new Error(`Gemini 调用失败 (${res.status}): ${errText}`);
     }
     const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const text = parts.filter(p => !p.thought).map(p => p.text || '').join('') || parts.map(p => p.text || '').join('');
     return text.trim();
 }
 
@@ -3770,10 +3776,12 @@ async function createAndPushMemorySlice({ rawText, aiMode = '', useAiSummary = f
             if (!finalEvent && tagObj.eventType) finalEvent = tagObj.eventType;
         }
 
+        let hasNewPoolTag = false;
         if (mode !== 'raw') {
             finalTags.forEach(t => {
                 if (t && !state.globalProfile.customTags.includes(t)) {
                     state.globalProfile.customTags.push(t);
+                    hasNewPoolTag = true;
                 }
             });
         }
@@ -3795,6 +3803,15 @@ async function createAndPushMemorySlice({ rawText, aiMode = '', useAiSummary = f
         branchData.slices.push(newSlice);
 
         await pushCurrentBranchToGithub(`Archive memory [${finalEvent}]`);
+        if (hasNewPoolTag && isGithubConfigured()) {
+            try {
+                const newProfileSha = await githubPutFile('global_profile.json', buildGlobalProfilePayload(), state.globalProfile.sha, 'Sync AI-generated custom tags');
+                state.globalProfile.sha = newProfileSha;
+                saveLocalState();
+            } catch (syncErr) {
+                console.warn('Sync new custom tags to global_profile.json failed:', syncErr);
+            }
+        }
         document.getElementById('quick-archive-text').value = '';
     } catch (err) {
         console.error(err);
@@ -4526,7 +4543,8 @@ function bindEvents() {
             const branchData = getCurrentBranchData();
             branchData.slices = (branchData.slices || []).filter(s => !state.batchSelectedIds.has(s.id));
             exitBatchManageMode();
-            await pushCurrentBranchToGithub(`Batch delete ${count} memory slices`);
+            await pushCurrentBranchToGithub(`Batch delete ${count} memory slices`, { silentToast: true });
+            showToast('批量删除完成', `已删除 ${count} 条记忆切片${isGithubConfigured() ? '并同步 GitHub' : '（本地）'}`, 'success');
         } catch (err) {
             showToast('批量删除失败', err.message, 'error');
         } finally {
@@ -4594,7 +4612,7 @@ function bindEvents() {
             });
             if (updatedCount > 0) {
                 exitBatchManageMode();
-                await pushCurrentBranchToGithub(`Batch append tags (${tagsToAdd.join(', ')}) to ${updatedCount} slices`);
+                await pushCurrentBranchToGithub(`Batch append tags (${tagsToAdd.join(', ')}) to ${updatedCount} slices`, { silentToast: true });
                 showToast('批量打标签完成', `已为 ${updatedCount} 条记忆追加标签：${tagsToAdd.map(t => '#' + t).join(' ')}`, 'success');
             }
         } catch (err) {
@@ -4664,12 +4682,10 @@ function bindEvents() {
             }
 
             if (successCount > 0) {
-                saveLocalState();
-                if (isGithubConfigured()) {
-                    if (loadingMsgEl) loadingMsgEl.textContent = `正在将 ${successCount} 条新向量同步至 GitHub...`;
-                    await syncBranchToGithub(branch, `Re-embed ${successCount} slices with ${modelName}`);
+                if (loadingMsgEl && isGithubConfigured()) {
+                    loadingMsgEl.textContent = `正在将 ${successCount} 条新向量同步至 GitHub...`;
                 }
-                renderAllUI();
+                await pushCurrentBranchToGithub(`Re-embed ${successCount} slices with ${modelName}`, { silentToast: true });
                 if (failCount === 0) {
                     showToast('批量重算完成', `已用 [${modelName}] 更新 ${successCount} 条记忆向量${isGithubConfigured() ? '并同步 GitHub' : ''}`, 'success');
                 } else {
@@ -5046,12 +5062,12 @@ function bindEvents() {
                     body: JSON.stringify({
                         model,
                         messages: [{ role: 'user', content: '请仅回复OK两个字母' }],
-                        max_tokens: 16
+                        max_tokens: 512
                     })
                 });
                 if (!res.ok) throw new Error(formatApiTestError(res.status, await res.text()));
                 const data = await res.json();
-                replyText = (data.choices?.[0]?.message?.content || '').trim();
+                replyText = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
                 if (!replyText && !Array.isArray(data.choices)) {
                     throw new Error('接口返回格式异常，缺少 choices');
                 }
@@ -5062,7 +5078,7 @@ function bindEvents() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         contents: [{ role: 'user', parts: [{ text: '请仅回复OK两个字母' }] }],
-                        generationConfig: { maxOutputTokens: 16 },
+                        generationConfig: { maxOutputTokens: 1024 },
                         safetySettings: [
                             { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                             { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -5074,7 +5090,8 @@ function bindEvents() {
                 });
                 if (!res.ok) throw new Error(formatApiTestError(res.status, await res.text()));
                 const data = await res.json();
-                replyText = (data.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '').trim();
+                const parts = data.candidates?.[0]?.content?.parts || [];
+                replyText = (parts.filter(p => !p.thought).map(p => p.text || '').join('') || parts.map(p => p.text || '').join('')).trim();
                 if (!replyText) {
                     const blockReason = data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason;
                     if (blockReason) throw new Error(`模型返回为空 (${blockReason})`);

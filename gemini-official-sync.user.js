@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.8.1
+// @version      1.8.2
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -85,7 +85,7 @@
     const DEFAULT_TAGS = ['核心设定', '日常点滴', '重要事件', '偏好习惯', '约定待办', '剧情进度', '感情升温'];
     const PRESET_MODELS = {
         gemini: {
-            chat: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+            chat: ['gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
             embed: ['text-embedding-004', 'gemini-embedding-001'],
             rerank: ['BAAI/bge-reranker-v2-m3']
         },
@@ -95,7 +95,7 @@
             rerank: ['BAAI/bge-reranker-v2-m3', 'netease-youdao/bce-reranker-base_v1', 'Pro/BAAI/bge-reranker-v2-m3']
         },
         openai: {
-            chat: ['gpt-4o-mini', 'gpt-4o', 'deepseek-chat', 'deepseek-reasoner', 'claude-3-5-sonnet-20241022', 'gemini-2.5-flash'],
+            chat: ['gpt-4o-mini', 'gpt-4o', 'deepseek-chat', 'deepseek-reasoner', 'claude-3-5-sonnet-20241022', 'gemini-3.5-flash-lite'],
             embed: ['text-embedding-3-small', 'text-embedding-3-large', 'BAAI/bge-m3'],
             rerank: ['BAAI/bge-reranker-v2-m3', 'rerank-v3.5']
         }
@@ -104,7 +104,7 @@
     const PROVIDER_DEFAULTS = {
         gemini: {
             base: 'https://generativelanguage.googleapis.com',
-            chatModel: 'gemini-2.5-flash',
+            chatModel: 'gemini-3.5-flash-lite',
             embedModel: 'text-embedding-004',
             rerankModel: 'BAAI/bge-reranker-v2-m3',
             keyPlaceholder: 'Google Gemini API Key (AIzaSy...)',
@@ -191,7 +191,7 @@
         embedKey: '',
         embedBase: 'https://api.siliconflow.cn/v1',
         embedProfiles: createDefaultEmbedProfiles(),
-        chatModel: 'gemini-2.5-flash',
+        chatModel: 'gemini-3.5-flash-lite',
         embedModel: 'text-embedding-004',
         rerankEnabled: false,
         rerankModel: 'BAAI/bge-reranker-v2-m3',
@@ -205,7 +205,7 @@
         customTags: [...DEFAULT_TAGS],
         persona: '',
         branchPersonas: {},
-        selectedTags: new Set(['日常点滴']),
+        selectedTags: new Set(),
         archiveMode: 'tag_only',
         panelOpen: false
     };
@@ -222,7 +222,7 @@
             state.branchPersonas = (parsed.branchPersonas && typeof parsed.branchPersonas === 'object' && !Array.isArray(parsed.branchPersonas))
                 ? parsed.branchPersonas
                 : {};
-            state.selectedTags = new Set(parsed.selectedTagsArr || ['日常点滴']);
+            state.selectedTags = new Set(Array.isArray(parsed.selectedTagsArr) ? parsed.selectedTagsArr : []);
             ensureProviderProfiles(state);
         } catch (e) {
             console.warn('[初晴助手] 读取配置失败', e);
@@ -887,7 +887,7 @@
             return (data.choices?.[0]?.message?.content || '').trim();
         }
 
-        const model = state.chatModel || 'gemini-2.5-flash';
+        const model = state.chatModel || 'gemini-3.5-flash-lite';
         const res = await safeFetch(`${cfg.base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -905,7 +905,8 @@
         });
         if (!res.ok) return null;
         const data = await res.json();
-        return (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        return (parts.filter(p => !p.thought).map(p => p.text || '').join('') || parts.map(p => p.text || '').join('')).trim();
     }
 
     function extractUserscriptJson(reply) {
@@ -1446,11 +1447,11 @@
                         method: 'POST',
                         timeout: 25000,
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${resolved.key}` },
-                        body: JSON.stringify({ model, messages: [{ role: 'user', content: '请仅回复OK两个字母' }], max_tokens: 16 })
+                        body: JSON.stringify({ model, messages: [{ role: 'user', content: '请仅回复OK两个字母' }], max_tokens: 512 })
                     });
                     if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
                     const data = await res.json();
-                    const reply = (data.choices?.[0]?.message?.content || '').trim();
+                    const reply = (data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning_content || '').trim();
                     showToast('总结接口测试通过', `[${model}] ${Date.now() - t0}ms，回复: ${(reply || 'OK').slice(0, 24)}`);
                 } else {
                     const res = await safeFetch(`${resolved.base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(resolved.key)}`, {
@@ -1459,7 +1460,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             contents: [{ role: 'user', parts: [{ text: '请仅回复OK两个字母' }] }],
-                            generationConfig: { maxOutputTokens: 16 },
+                            generationConfig: { maxOutputTokens: 1024 },
                             safetySettings: [
                                 { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
                                 { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
@@ -1471,7 +1472,8 @@
                     });
                     if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`);
                     const data = await res.json();
-                    const reply = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+                    const parts = data.candidates?.[0]?.content?.parts || [];
+                    const reply = (parts.filter(p => !p.thought).map(p => p.text || '').join('') || parts.map(p => p.text || '').join('')).trim();
                     showToast('总结接口测试通过', `[${model}] ${Date.now() - t0}ms，回复: ${(reply || 'OK').slice(0, 24)}`);
                 }
             } catch (err) {
@@ -1680,7 +1682,7 @@
             try {
                 const mode = document.getElementById('cq-ai-mode').value || 'tag_only';
                 let finalText = rawText;
-                let finalTags = Array.from(state.selectedTags);
+                let finalTags = Array.from(state.selectedTags).filter(Boolean);
                 let finalEvent = '官网一键归档';
                 if (mode === 'summarize') {
                     const sum = await summarizeViaGemini(rawText);
@@ -1691,7 +1693,17 @@
                     if (Array.isArray(tagged.tags)) finalTags = Array.from(new Set([...finalTags, ...tagged.tags]));
                     if (tagged.eventType) finalEvent = tagged.eventType;
                 }
-                const vec = await getEmbeddingVector(`${finalEvent} ${finalTags.join(' ')} ${finalText}`);
+                let hasNewPoolTag = false;
+                if (mode !== 'raw') {
+                    finalTags.forEach(t => {
+                        if (t && !state.customTags.includes(t)) {
+                            state.customTags.push(t);
+                            hasNewPoolTag = true;
+                        }
+                    });
+                }
+                const resolvedTags = finalTags.length ? finalTags : ['日常点滴'];
+                const vec = await getEmbeddingVector(`${finalEvent} ${resolvedTags.join(' ')} ${finalText}`);
                 const path = `branches/${state.currentBranch}.json`;
                 const remote = await githubGetFile(path);
                 const slices = Array.isArray(remote?.json) ? remote.json : [];
@@ -1699,11 +1711,29 @@
                     id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
                     text: finalText,
                     date: getLocalDateStr(),
-                    tags: finalTags.length ? finalTags : ['日常点滴'],
+                    tags: resolvedTags,
                     event: finalEvent,
                     vector: vec
                 });
                 await githubPutFile(path, slices, remote?.sha, 'Archive from gemini.google.com');
+                if (hasNewPoolTag) {
+                    saveConfig();
+                    renderPanelState();
+                    try {
+                        const gpRemote = await githubGetFile('global_profile.json');
+                        const gpJson = gpRemote?.json || {};
+                        const mergedTags = Array.from(new Set([...(Array.isArray(gpJson.customTags) ? gpJson.customTags : []), ...state.customTags]));
+                        await githubPutFile('global_profile.json', {
+                            persona: typeof gpJson.persona === 'string' ? gpJson.persona : state.persona,
+                            branchPersonas: (gpJson.branchPersonas && typeof gpJson.branchPersonas === 'object') ? gpJson.branchPersonas : state.branchPersonas,
+                            customTags: mergedTags,
+                            branchList: Array.isArray(gpJson.branchList) ? gpJson.branchList : state.branchList,
+                            updatedAt: new Date().toISOString()
+                        }, gpRemote?.sha || null, 'Sync AI-generated custom tags from userscript');
+                    } catch (syncErr) {
+                        console.warn('[初晴助手] 同步新标签至 global_profile.json 失败', syncErr);
+                    }
+                }
                 document.getElementById('cq-archive-preview').value = '';
                 showToast('记忆已归档', `已免复制存入 branches/${state.currentBranch}.json (${slices.length} 条)`);
             } catch (err) {
