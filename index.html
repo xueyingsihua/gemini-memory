@@ -1145,6 +1145,66 @@
             color: var(--color-text-strong);
         }
 
+        .memory-slice-card.batch-mode {
+            cursor: pointer;
+        }
+
+        .memory-slice-card.batch-selected {
+            border-left-color: var(--color-bot-main);
+            background: rgba(var(--rgb-bot-main), 0.10);
+            box-shadow: 0 0 0 1px rgba(var(--rgb-bot-main), 0.35), var(--shadow-sm);
+        }
+
+        .slice-batch-check-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .slice-batch-checkbox {
+            width: 15px;
+            height: 15px;
+            accent-color: var(--color-accent);
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .drawer-batch-bar {
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)) 16px;
+            background: var(--base-bg-light);
+            border-top: 1px solid rgba(var(--rgb-brown-light), 0.3);
+            box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.06);
+        }
+
+        .drawer-batch-bar.open {
+            display: flex;
+        }
+
+        .drawer-batch-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .drawer-batch-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+
+        .btn-chuqing.btn-batch-active {
+            background: rgba(var(--rgb-bot-main), 0.16);
+            color: var(--color-bot-text);
+            border-color: rgba(var(--rgb-bot-main), 0.5);
+        }
+
         /* ================================================
            通用弹窗 (配置弹窗 / 编辑弹窗)
            ================================================ */
@@ -1813,11 +1873,12 @@
                 <div class="tag-picker-bar" id="quick-tag-picker"></div>
 
                 <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:2px;">
-                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                        <label style="font-size:12px;display:inline-flex;align-items:center;gap:5px;cursor:pointer;">
-                            <input type="checkbox" id="chk-ai-summarize">
-                            <span>入库前让 AI 提炼为 100 字摘要并补标签</span>
-                        </label>
+                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <select id="quick-ai-mode" class="chuqing-input" style="width:auto;max-width:100%;height:28px;padding:0 8px;font-size:12px;" title="选择归档入库前的 AI 处理模式">
+                            <option value="raw">📝 原样入库 (不调 AI)</option>
+                            <option value="tag_only">🏷️ 仅 AI 打标签/补事件 (保留原文)</option>
+                            <option value="summarize">✨ AI 提炼 100 字摘要并补标签</option>
+                        </select>
                         <input type="text" id="quick-event-input" class="chuqing-input" placeholder="事件类型 (如: 日常/约定)" style="width:140px;height:28px;padding:2px 8px;font-size:12px;">
                     </div>
                     <button class="btn-chuqing primary" id="btn-submit-archive">
@@ -1930,9 +1991,14 @@
                 <input type="text" id="drawer-search-input" class="chuqing-input" placeholder="🔍 搜索记忆内容、事件或日期...">
                 <button class="btn-chuqing" id="btn-export-json" title="导出当前分支 JSON 备份">导出</button>
             </div>
-            <button class="btn-chuqing" id="btn-reembed-branch" style="height:32px;font-size:12.5px;width:100%;" title="更换 Embedding 模型或维度后，使用当前模型重新生成本隔间全部记忆向量并同步 GitHub">
-                🔄 一键重算当前隔间全部向量
-            </button>
+            <div style="display:flex;gap:8px;">
+                <button class="btn-chuqing" id="btn-reembed-branch" style="height:32px;font-size:12.5px;flex:1;" title="更换 Embedding 模型或维度后，使用当前模型重新生成本隔间全部记忆向量并同步 GitHub">
+                    🔄 重算当前隔间向量
+                </button>
+                <button class="btn-chuqing" id="btn-toggle-batch-mode" style="height:32px;font-size:12.5px;flex-shrink:0;" title="开启多选以批量删除或批量追加标签">
+                    ☑️ 批量管理
+                </button>
+            </div>
         </div>
 
         <!-- 标签筛选胶囊栏 -->
@@ -1946,6 +2012,20 @@
 
         <!-- 切片列表 -->
         <div id="drawer-slice-list" style="display:flex;flex-direction:column;gap:12px;"></div>
+    </div>
+
+    <div class="drawer-batch-bar" id="drawer-batch-bar">
+        <div class="drawer-batch-row">
+            <span id="batch-selected-count" style="font-size:12.5px;font-weight:700;color:var(--color-text-strong);">已选 0 条</span>
+            <div class="drawer-batch-actions">
+                <button type="button" class="mes-action-link" id="btn-batch-select-all">☑️ 全选当前列表</button>
+                <button type="button" class="mes-action-link" id="btn-batch-cancel">取消</button>
+            </div>
+        </div>
+        <div class="drawer-batch-row">
+            <button type="button" class="btn-chuqing" id="btn-batch-add-tags" style="flex:1;height:32px;font-size:12.5px;">🏷️ 批量追加标签</button>
+            <button type="button" class="btn-chuqing" id="btn-batch-delete" style="flex:1;height:32px;font-size:12.5px;color:var(--color-danger);">🗑️ 删除已选</button>
+        </div>
     </div>
 </aside>
 
@@ -2135,13 +2215,44 @@
                 </div>
             </div>
             <div class="form-group">
-                <label class="form-label">标签 (用逗号分隔，如: 话题, 游戏进度)</label>
-                <input type="text" id="edit-slice-tags" class="chuqing-input">
+                <label class="form-label">
+                    <span>点选 #标签（高亮为已选中）</span>
+                </label>
+                <div class="tag-picker-bar" id="edit-slice-tag-picker"></div>
+                <textarea id="edit-slice-tags" class="chuqing-textarea" rows="2" placeholder="可选：手动新增标签（支持半角逗号 ,、全角逗号 ，、顿号 、 或换行分隔）"></textarea>
             </div>
         </div>
         <div class="modal-footer">
             <button class="btn-chuqing" id="btn-cancel-edit-slice">取消</button>
             <button class="btn-chuqing primary" id="btn-save-edit-slice">💾 重新计算向量并保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================
+     🏷️ 批量追加标签弹窗
+     ================================================ -->
+<div class="modal-overlay" id="batch-tag-modal">
+    <div class="modal-card">
+        <div class="modal-header">
+            <span class="modal-title">🏷️ 批量追加标签（已选 <span id="batch-tag-modal-count">0</span> 条）</span>
+            <button class="btn-chuqing icon-only" id="btn-close-batch-tag">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">点选要追加的 #标签（自动去重，不覆盖原有标签）</label>
+                <div class="tag-picker-bar" id="batch-tag-picker"></div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">可选：手动新增追加标签</label>
+                <textarea id="batch-tag-extra-input" class="chuqing-textarea" rows="2" placeholder="支持半角逗号 ,、全角逗号 ，、顿号 、 或换行分隔..."></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-chuqing" id="btn-cancel-batch-tag">取消</button>
+            <button class="btn-chuqing primary" id="btn-confirm-batch-tag">🏷️ 确认追加并同步</button>
         </div>
     </div>
 </div>
@@ -2404,6 +2515,7 @@ const state = {
         minScore: 0.38,
         autoTurns: 5,
         autoArchiveEnabled: false,
+        quickArchiveMode: 'raw',
         githubPat: '',
         githubRepo: ''
     },
@@ -2420,7 +2532,12 @@ const state = {
     selectedQuickTags: new Set(['日常点滴']),
     drawerFilterTag: '',
     lastRecalledSlices: [],
-    turnCounter: 0
+    turnCounter: 0,
+    editSliceSelectedTags: new Set(),
+    editSlicePoolTags: [],
+    batchManageMode: false,
+    batchSelectedIds: new Set(),
+    batchTagModalSelected: new Set()
 };
 
 /* ============================================================================
@@ -3135,6 +3252,28 @@ async function callGeminiChat(promptText, systemInstruction = '') {
     return text.trim();
 }
 
+function parseNormalizedTags(rawStr) {
+    return Array.from(new Set(
+        String(rawStr || '')
+            .split(/[,，、;；\r\n]+/)
+            .map(t => t.trim().replace(/^#+/, '').trim())
+            .filter(Boolean)
+    ));
+}
+
+function extractJsonObject(rawStr) {
+    const cleaned = String(rawStr || '').replace(/```json|```/gi, '').trim();
+    try {
+        return JSON.parse(cleaned);
+    } catch (e) {
+        const match = cleaned.match(/\{[\s\S]*\}/);
+        if (match) {
+            return JSON.parse(match[0]);
+        }
+        throw e;
+    }
+}
+
 // 让模型将对话或长文本提炼为 100-200 字精简总结，并优先从自定义标签池打 2~3 个标签
 async function summarizeAndTagWithAI(rawText) {
     const tagPoolStr = state.globalProfile.customTags.join('、');
@@ -3146,18 +3285,42 @@ async function summarizeAndTagWithAI(rawText) {
     const reply = await callGeminiChat(rawText, sysPrompt);
     const cleaned = reply.replace(/```json|```/gi, '').trim();
     try {
-        const parsed = JSON.parse(cleaned);
+        const parsed = extractJsonObject(cleaned);
+        const cleanTags = Array.isArray(parsed.tags)
+            ? parsed.tags.map(t => String(t).trim().replace(/^#+/, '')).filter(Boolean)
+            : [];
         return {
             text: parsed.text || rawText.slice(0, 200),
-            tags: Array.isArray(parsed.tags) && parsed.tags.length ? parsed.tags : ['日常点滴'],
+            tags: cleanTags.length ? cleanTags : ['日常点滴'],
             event: parsed.event || '日常记录'
         };
     } catch (e) {
         return {
-            text: reply || rawText.slice(0, 200),
+            text: cleaned || rawText.slice(0, 200),
             tags: Array.from(state.selectedQuickTags),
             event: '日常记录'
         };
+    }
+}
+
+// 仅让 AI 生成分类标签与事件类型，严格保留用户原文一字不改
+async function tagAndClassifyWithAI(rawText) {
+    const tagPoolStr = state.globalProfile.customTags.join('、');
+    const sysPrompt = `你是一个长期记忆分类助手。请阅读用户提供的原文，绝对不要改写、总结、缩写或复述原文，只需挑选 2~3 个最贴合的分类标签并归纳 1 个简短事件类型。
+优先复用以下现有标签池中的标签：[${tagPoolStr}]；仅当现有标签都不够准确时，最多可额外新增 1 个简短标签（不要带 # 号）。
+请严格只输出如下 JSON 格式（不要包含任何解释或 markdown 代码块）：
+{"tags": ["标签1", "标签2"], "eventType": "日常/节日/约定/重要事件"}`;
+
+    const reply = await callGeminiChat(rawText, sysPrompt);
+    try {
+        const parsed = extractJsonObject(reply);
+        const cleanTags = Array.isArray(parsed.tags)
+            ? Array.from(new Set(parsed.tags.map(t => String(t).trim().replace(/^#+/, '').trim()).filter(Boolean)))
+            : [];
+        const eventType = String(parsed.eventType || parsed.event || '').trim();
+        return { tags: cleanTags, eventType };
+    } catch (e) {
+        return { tags: [], eventType: '' };
     }
 }
 
@@ -3303,12 +3466,10 @@ function renderTagPickers() {
     });
 }
 
-function renderDrawerSlices() {
-    const listEl = document.getElementById('drawer-slice-list');
-    const searchVal = (document.getElementById('drawer-search-input').value || '').trim().toLowerCase();
+function getFilteredDrawerSlices() {
+    const searchVal = (document.getElementById('drawer-search-input')?.value || '').trim().toLowerCase();
     const slices = [...(getCurrentBranchData().slices || [])].reverse();
-
-    const filtered = slices.filter(s => {
+    return slices.filter(s => {
         if (state.drawerFilterTag && !(s.tags || []).includes(state.drawerFilterTag)) return false;
         if (searchVal) {
             const hay = `${s.text} ${(s.tags || []).join(' ')} ${s.event || ''} ${s.date || ''}`.toLowerCase();
@@ -3316,6 +3477,45 @@ function renderDrawerSlices() {
         }
         return true;
     });
+}
+
+function updateDrawerBatchUI(filteredList = null) {
+    const toggleBtn = document.getElementById('btn-toggle-batch-mode');
+    const barEl = document.getElementById('drawer-batch-bar');
+    const countEl = document.getElementById('batch-selected-count');
+    const selectAllBtn = document.getElementById('btn-batch-select-all');
+    const addTagsBtn = document.getElementById('btn-batch-add-tags');
+    const delBtn = document.getElementById('btn-batch-delete');
+
+    if (toggleBtn) {
+        toggleBtn.classList.toggle('btn-batch-active', state.batchManageMode);
+        toggleBtn.textContent = state.batchManageMode ? '✅ 退出批量' : '☑️ 批量管理';
+    }
+    if (barEl) {
+        barEl.classList.toggle('open', state.batchManageMode);
+    }
+
+    const selCount = state.batchSelectedIds.size;
+    if (countEl) countEl.textContent = `已选 ${selCount} 条`;
+    if (addTagsBtn) addTagsBtn.disabled = selCount === 0;
+    if (delBtn) delBtn.disabled = selCount === 0;
+
+    if (selectAllBtn) {
+        const visible = filteredList || getFilteredDrawerSlices();
+        const allSelected = visible.length > 0 && visible.every(s => state.batchSelectedIds.has(s.id));
+        selectAllBtn.textContent = allSelected ? '⬜ 取消全选' : '☑️ 全选当前列表';
+    }
+}
+
+function renderDrawerSlices() {
+    const listEl = document.getElementById('drawer-slice-list');
+    const allSlices = getCurrentBranchData().slices || [];
+    const validIdSet = new Set(allSlices.map(s => s.id));
+    for (const id of Array.from(state.batchSelectedIds)) {
+        if (!validIdSet.has(id)) state.batchSelectedIds.delete(id);
+    }
+
+    const filtered = getFilteredDrawerSlices();
 
     if (filtered.length === 0) {
         listEl.innerHTML = `
@@ -3323,17 +3523,33 @@ function renderDrawerSlices() {
                 当前筛选条件下暂无记忆切片 ✉️
             </div>
         `;
+        updateDrawerBatchUI(filtered);
         return;
     }
 
     listEl.innerHTML = '';
     filtered.forEach(s => {
+        const isChecked = state.batchManageMode && state.batchSelectedIds.has(s.id);
         const card = document.createElement('div');
-        card.className = 'memory-slice-card';
+        card.className = `memory-slice-card${state.batchManageMode ? ' batch-mode' : ''}${isChecked ? ' batch-selected' : ''}`;
         const vecDim = Array.isArray(s.vector) ? s.vector.length : 0;
+
+        const topLeftHtml = state.batchManageMode
+            ? `<label class="slice-batch-check-wrap">
+                   <input type="checkbox" class="slice-batch-checkbox" ${isChecked ? 'checked' : ''}>
+                   <span>📅 ${escapeHtml(s.date || '未知日期')} · ${escapeHtml(s.event || '日常')}</span>
+               </label>`
+            : `<span>📅 ${escapeHtml(s.date || '未知日期')} · ${escapeHtml(s.event || '日常')}</span>`;
+
+        const footerActionsHtml = state.batchManageMode
+            ? `<span style="font-size:11px;color:var(--color-text-faded);">${isChecked ? '已勾选' : '点击卡片勾选'}</span>`
+            : `<button class="mes-action-link btn-copy-single" title="复制这条记忆">📋 复制</button>
+               <button class="mes-action-link btn-edit-single" title="编辑并重算向量">✏️ 编辑</button>
+               <button class="mes-action-link btn-del-single" style="color:var(--color-danger);" title="删除并同步 GitHub">🗑️ 删除</button>`;
+
         card.innerHTML = `
             <div class="slice-card-top">
-                <span>📅 ${escapeHtml(s.date || '未知日期')} · ${escapeHtml(s.event || '日常')}</span>
+                ${topLeftHtml}
                 <span title="向量维度: ${vecDim}">◈ VEC-${vecDim}D</span>
             </div>
             <div class="slice-card-text">${escapeHtml(s.text)}</div>
@@ -3342,29 +3558,51 @@ function renderDrawerSlices() {
                     ${(s.tags || []).map(t => `<span class="slice-tag-badge">#${escapeHtml(t)}</span>`).join('')}
                 </div>
                 <div style="display:flex;gap:6px;">
-                    <button class="mes-action-link btn-copy-single" title="复制这条记忆">📋 复制</button>
-                    <button class="mes-action-link btn-edit-single" title="编辑并重算向量">✏️ 编辑</button>
-                    <button class="mes-action-link btn-del-single" style="color:var(--color-danger);" title="删除并同步 GitHub">🗑️ 删除</button>
+                    ${footerActionsHtml}
                 </div>
             </div>
         `;
 
-        card.querySelector('.btn-copy-single').addEventListener('click', () => {
-            navigator.clipboard.writeText(`【记忆切片 | ${s.date} | #${(s.tags || []).join(' #')}】\n${s.text}`);
-            showToast('已复制切片', '可直接粘贴至官方 Gemini App', 'info');
-        });
+        if (state.batchManageMode) {
+            const cb = card.querySelector('.slice-batch-checkbox');
+            const toggleCardSelection = (nextState) => {
+                const selected = typeof nextState === 'boolean' ? nextState : !state.batchSelectedIds.has(s.id);
+                if (selected) state.batchSelectedIds.add(s.id);
+                else state.batchSelectedIds.delete(s.id);
+                cb.checked = selected;
+                card.classList.toggle('batch-selected', selected);
+                const hintSpan = card.querySelector('.slice-card-footer > div:last-child > span');
+                if (hintSpan) hintSpan.textContent = selected ? '已勾选' : '点击卡片勾选';
+                updateDrawerBatchUI(filtered);
+            };
+            cb.addEventListener('change', (e) => {
+                e.stopPropagation();
+                toggleCardSelection(cb.checked);
+            });
+            card.querySelector('.slice-batch-check-wrap').addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+            card.addEventListener('click', () => toggleCardSelection());
+        } else {
+            card.querySelector('.btn-copy-single').addEventListener('click', () => {
+                navigator.clipboard.writeText(`【记忆切片 | ${s.date} | #${(s.tags || []).join(' #')}】\n${s.text}`);
+                showToast('已复制切片', '可直接粘贴至官方 Gemini App', 'info');
+            });
 
-        card.querySelector('.btn-edit-single').addEventListener('click', () => openEditSliceModal(s));
+            card.querySelector('.btn-edit-single').addEventListener('click', () => openEditSliceModal(s));
 
-        card.querySelector('.btn-del-single').addEventListener('click', async () => {
-            if (!confirm(`确定删除这条记忆切片吗？\n「${s.text.slice(0, 45)}...」`)) return;
-            const branchData = getCurrentBranchData();
-            branchData.slices = branchData.slices.filter(item => item.id !== s.id);
-            await pushCurrentBranchToGithub('Delete memory slice');
-        });
+            card.querySelector('.btn-del-single').addEventListener('click', async () => {
+                if (!confirm(`确定删除这条记忆切片吗？\n「${s.text.slice(0, 45)}...」`)) return;
+                const branchData = getCurrentBranchData();
+                branchData.slices = branchData.slices.filter(item => item.id !== s.id);
+                await pushCurrentBranchToGithub('Delete memory slice');
+            });
+        }
 
         listEl.appendChild(card);
     });
+
+    updateDrawerBatchUI(filtered);
 }
 
 // 渲染聊天区消息卡片 (带初晴 .mes_reasoning_header 记忆召回小胶囊)
@@ -3489,37 +3727,59 @@ function renderAllUI() {
     document.getElementById('lbl-auto-turns').textContent = state.config.autoTurns;
     document.getElementById('chk-auto-archive').checked = Boolean(state.config.autoArchiveEnabled);
     document.getElementById('companion-recall-count').textContent = `Top-${state.config.topK} 检索`;
+    const modeSelect = document.getElementById('quick-ai-mode');
+    if (modeSelect) {
+        const savedMode = state.config.quickArchiveMode;
+        modeSelect.value = ['raw', 'tag_only', 'summarize'].includes(savedMode) ? savedMode : 'raw';
+    }
 }
 
 /* ============================================================================
    7. 核心业务交互：快速入库、唤醒打包复制、对话与自动总结、切片编辑
    ============================================================================ */
 
-// 新增一条记忆切片并推送到 GitHub
-async function createAndPushMemorySlice({ rawText, useAiSummary = false, tags = [], eventName = '日常记录' }) {
+// 新增一条记忆切片并推送到 GitHub (支持 raw 原样 / tag_only 仅打标签补事件 / summarize 提炼摘要)
+async function createAndPushMemorySlice({ rawText, aiMode = '', useAiSummary = false, tags = [], eventName = '' }) {
     if (!rawText || !rawText.trim()) {
         showToast('内容为空', '请先粘贴或输入要归档的记忆内容', 'warning');
         return;
     }
-    showLoading('VECTORIZING', '正在计算 text-embedding-004 向量并归档至 GitHub...');
+    const mode = ['raw', 'tag_only', 'summarize'].includes(aiMode)
+        ? aiMode
+        : (useAiSummary ? 'summarize' : 'raw');
+    const loadingHint = mode === 'summarize'
+        ? '正在让 AI 提炼摘要、打标签并生成向量...'
+        : (mode === 'tag_only'
+            ? '正在让 AI 识别分类标签与事件（保留原文一字不改）...'
+            : '正在计算文本向量并归档至 GitHub...');
+    showLoading('VECTORIZING', loadingHint);
     try {
         let finalText = rawText.trim();
-        let finalTags = tags.length ? [...tags] : ['日常点滴'];
-        let finalEvent = eventName.trim() || '日常记录';
+        let finalTags = Array.isArray(tags) ? tags.filter(Boolean) : [];
+        const manualEvent = (eventName || '').trim();
+        let finalEvent = manualEvent;
 
-        if (useAiSummary) {
+        if (mode === 'summarize') {
             const summaryObj = await summarizeAndTagWithAI(finalText);
             finalText = summaryObj.text;
-            finalTags = Array.from(new Set([...finalTags, ...summaryObj.tags]));
-            if (!eventName.trim() && summaryObj.event) finalEvent = summaryObj.event;
+            finalTags = Array.from(new Set([...finalTags, ...(summaryObj.tags || [])]));
+            if (!finalEvent && summaryObj.event) finalEvent = summaryObj.event;
+        } else if (mode === 'tag_only') {
+            const tagObj = await tagAndClassifyWithAI(finalText);
+            finalTags = Array.from(new Set([...finalTags, ...(tagObj.tags || [])]));
+            if (!finalEvent && tagObj.eventType) finalEvent = tagObj.eventType;
+        }
 
-            // 将 AI 新生成的标签同步进自定义标签池
+        if (mode !== 'raw') {
             finalTags.forEach(t => {
-                if (!state.globalProfile.customTags.includes(t)) {
+                if (t && !state.globalProfile.customTags.includes(t)) {
                     state.globalProfile.customTags.push(t);
                 }
             });
         }
+
+        if (finalTags.length === 0) finalTags = ['日常点滴'];
+        if (!finalEvent) finalEvent = '日常记录';
 
         const vector = await getEmbeddingVector(`${finalEvent} ${finalTags.join(' ')} ${finalText}`);
         const newSlice = {
@@ -3688,13 +3948,39 @@ async function triggerRoundMemoryExtraction(isSilentAuto = false) {
     }
 }
 
+// 渲染「编辑记忆切片」弹窗里的 #标签 点选胶囊
+function renderEditSliceTagPicker() {
+    const picker = document.getElementById('edit-slice-tag-picker');
+    if (!picker) return;
+    picker.innerHTML = '';
+    state.editSlicePoolTags.forEach(tag => {
+        const chip = document.createElement('span');
+        const isSelected = state.editSliceSelectedTags.has(tag);
+        chip.className = `tag-chip ${isSelected ? 'selected' : ''}`;
+        chip.textContent = `#${tag}`;
+        chip.addEventListener('click', () => {
+            if (state.editSliceSelectedTags.has(tag)) {
+                state.editSliceSelectedTags.delete(tag);
+            } else {
+                state.editSliceSelectedTags.add(tag);
+            }
+            renderEditSliceTagPicker();
+        });
+        picker.appendChild(chip);
+    });
+}
+
 // 打开单条记忆编辑弹窗
 function openEditSliceModal(slice) {
     document.getElementById('edit-slice-id').value = slice.id;
     document.getElementById('edit-slice-text').value = slice.text || '';
     document.getElementById('edit-slice-date').value = slice.date || getTodayDate();
     document.getElementById('edit-slice-event').value = slice.event || '日常';
-    document.getElementById('edit-slice-tags').value = (slice.tags || []).join(', ');
+    const existingTags = Array.isArray(slice.tags) ? slice.tags.filter(Boolean) : [];
+    state.editSliceSelectedTags = new Set(existingTags);
+    state.editSlicePoolTags = Array.from(new Set([...state.globalProfile.customTags, ...existingTags]));
+    document.getElementById('edit-slice-tags').value = '';
+    renderEditSliceTagPicker();
     document.getElementById('edit-slice-modal').classList.add('open');
 }
 
@@ -3735,6 +4021,8 @@ function bindEvents() {
     // 分支切换
     document.getElementById('branch-select').addEventListener('change', async (e) => {
         state.currentBranch = e.target.value;
+        state.batchManageMode = false;
+        state.batchSelectedIds.clear();
         saveLocalState();
         await loadBranchFromGithub(state.currentBranch, true);
         showToast('已切换分支隔间', `当前处于 [${state.currentBranch}] 独立记忆库`, 'info');
@@ -4119,14 +4407,20 @@ function bindEvents() {
         if (e.key === 'Enter') handleConfirmAddTag();
     });
 
-    // 伴侣台：生成向量并归档 GitHub
+    // 伴侣台：AI 入库模式持久化与生成向量并归档 GitHub
+    document.getElementById('quick-ai-mode').addEventListener('change', (e) => {
+        const mode = e.target.value;
+        state.config.quickArchiveMode = ['raw', 'tag_only', 'summarize'].includes(mode) ? mode : 'raw';
+        saveLocalState();
+    });
+
     document.getElementById('btn-submit-archive').addEventListener('click', async () => {
         const rawText = document.getElementById('quick-archive-text').value;
-        const useAi = document.getElementById('chk-ai-summarize').checked;
+        const aiMode = document.getElementById('quick-ai-mode').value || 'raw';
         const eventName = document.getElementById('quick-event-input').value;
         await createAndPushMemorySlice({
             rawText,
-            useAiSummary: useAi,
+            aiMode,
             tags: Array.from(state.selectedQuickTags),
             eventName
         });
@@ -4179,13 +4473,19 @@ function bindEvents() {
         showToast('记忆唤醒包已复制', '现在切回官方 Gemini App 直接粘贴发送即可！', 'success');
     });
 
-    // 抽屉开关与搜索
+    // 抽屉开关、搜索与批量管理（批量删除 / 批量追加标签）
+    const exitBatchManageMode = () => {
+        state.batchManageMode = false;
+        state.batchSelectedIds.clear();
+    };
     const openDrawer = () => {
         document.getElementById('memory-drawer').classList.add('open');
         document.getElementById('drawer-backdrop').classList.add('open');
         renderDrawerSlices();
     };
     const closeDrawer = () => {
+        exitBatchManageMode();
+        updateDrawerBatchUI();
         document.getElementById('memory-drawer').classList.remove('open');
         document.getElementById('drawer-backdrop').classList.remove('open');
     };
@@ -4193,6 +4493,116 @@ function bindEvents() {
     document.getElementById('btn-close-drawer').addEventListener('click', closeDrawer);
     document.getElementById('drawer-backdrop').addEventListener('click', closeDrawer);
     document.getElementById('drawer-search-input').addEventListener('input', renderDrawerSlices);
+
+    document.getElementById('btn-toggle-batch-mode').addEventListener('click', () => {
+        state.batchManageMode = !state.batchManageMode;
+        if (!state.batchManageMode) state.batchSelectedIds.clear();
+        renderDrawerSlices();
+    });
+
+    document.getElementById('btn-batch-cancel').addEventListener('click', () => {
+        exitBatchManageMode();
+        renderDrawerSlices();
+    });
+
+    document.getElementById('btn-batch-select-all').addEventListener('click', () => {
+        const visible = getFilteredDrawerSlices();
+        if (visible.length === 0) return;
+        const allSelected = visible.every(s => state.batchSelectedIds.has(s.id));
+        visible.forEach(s => {
+            if (allSelected) state.batchSelectedIds.delete(s.id);
+            else state.batchSelectedIds.add(s.id);
+        });
+        renderDrawerSlices();
+    });
+
+    document.getElementById('btn-batch-delete').addEventListener('click', async () => {
+        const count = state.batchSelectedIds.size;
+        if (count === 0) return;
+        if (!confirm(`确定要批量删除已勾选的 ${count} 条记忆切片吗？\n删除后不可恢复，并将一次性同步至云端。`)) return;
+
+        showLoading('BATCH DELETING', `正在批量删除 ${count} 条记忆并同步云端...`);
+        try {
+            const branchData = getCurrentBranchData();
+            branchData.slices = (branchData.slices || []).filter(s => !state.batchSelectedIds.has(s.id));
+            exitBatchManageMode();
+            await pushCurrentBranchToGithub(`Batch delete ${count} memory slices`);
+        } catch (err) {
+            showToast('批量删除失败', err.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    });
+
+    const batchTagModal = document.getElementById('batch-tag-modal');
+    const closeBatchTagModal = () => batchTagModal.classList.remove('open');
+    const renderBatchTagPicker = () => {
+        const picker = document.getElementById('batch-tag-picker');
+        if (!picker) return;
+        picker.innerHTML = '';
+        state.globalProfile.customTags.forEach(tag => {
+            const chip = document.createElement('span');
+            const isSelected = state.batchTagModalSelected.has(tag);
+            chip.className = `tag-chip ${isSelected ? 'selected' : ''}`;
+            chip.textContent = `#${tag}`;
+            chip.addEventListener('click', () => {
+                if (state.batchTagModalSelected.has(tag)) state.batchTagModalSelected.delete(tag);
+                else state.batchTagModalSelected.add(tag);
+                renderBatchTagPicker();
+            });
+            picker.appendChild(chip);
+        });
+    };
+
+    document.getElementById('btn-batch-add-tags').addEventListener('click', () => {
+        const count = state.batchSelectedIds.size;
+        if (count === 0) return;
+        state.batchTagModalSelected = new Set();
+        document.getElementById('batch-tag-modal-count').textContent = count;
+        document.getElementById('batch-tag-extra-input').value = '';
+        renderBatchTagPicker();
+        batchTagModal.classList.add('open');
+    });
+    document.getElementById('btn-close-batch-tag').addEventListener('click', closeBatchTagModal);
+    document.getElementById('btn-cancel-batch-tag').addEventListener('click', closeBatchTagModal);
+    batchTagModal.addEventListener('click', (e) => {
+        if (e.target === batchTagModal) closeBatchTagModal();
+    });
+
+    document.getElementById('btn-confirm-batch-tag').addEventListener('click', async () => {
+        const manualTags = parseNormalizedTags(document.getElementById('batch-tag-extra-input').value);
+        const tagsToAdd = Array.from(new Set([...state.batchTagModalSelected, ...manualTags]));
+        if (tagsToAdd.length === 0) {
+            showToast('请选择标签', '请至少点选或输入 1 个要追加的标签', 'warning');
+            return;
+        }
+        const selectedCount = state.batchSelectedIds.size;
+        if (selectedCount === 0) {
+            closeBatchTagModal();
+            return;
+        }
+        closeBatchTagModal();
+        showLoading('BATCH TAGGING', `正在为 ${selectedCount} 条记忆追加标签并同步云端...`);
+        try {
+            const branchData = getCurrentBranchData();
+            let updatedCount = 0;
+            (branchData.slices || []).forEach(s => {
+                if (state.batchSelectedIds.has(s.id)) {
+                    s.tags = Array.from(new Set([...(Array.isArray(s.tags) ? s.tags : []), ...tagsToAdd]));
+                    updatedCount++;
+                }
+            });
+            if (updatedCount > 0) {
+                exitBatchManageMode();
+                await pushCurrentBranchToGithub(`Batch append tags (${tagsToAdd.join(', ')}) to ${updatedCount} slices`);
+                showToast('批量打标签完成', `已为 ${updatedCount} 条记忆追加标签：${tagsToAdd.map(t => '#' + t).join(' ')}`, 'success');
+            }
+        } catch (err) {
+            showToast('批量追加标签失败', err.message, 'error');
+        } finally {
+            hideLoading();
+        }
+    });
 
     // 导出当前分支 JSON
     document.getElementById('btn-export-json').addEventListener('click', () => {
@@ -5008,10 +5418,8 @@ function bindEvents() {
         const newText = document.getElementById('edit-slice-text').value.trim();
         const newDate = document.getElementById('edit-slice-date').value.trim();
         const newEvent = document.getElementById('edit-slice-event').value.trim();
-        const newTags = document.getElementById('edit-slice-tags').value
-            .split(/[,，]/)
-            .map(t => t.trim().replace(/^#+/, ''))
-            .filter(Boolean);
+        const manualTags = parseNormalizedTags(document.getElementById('edit-slice-tags').value);
+        const newTags = Array.from(new Set([...state.editSliceSelectedTags, ...manualTags]));
 
         if (!newText) return;
         closeEditModal();

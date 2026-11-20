@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         信笺 · 初晴 | Gemini 官网免复制一键记忆库同步助手 (RAG)
 // @namespace    https://github.com/chuqing-gemini-rag
-// @version      1.7.0
+// @version      1.8.0
 // @description  在 gemini.google.com 官网页面挂载初晴信笺风悬浮岛：免复制一键抓取当前对话、生成 text-embedding-004 向量并归档至 GitHub 分支 JSON；支持一键检索 Top-K 记忆直接填入官网输入框！
 // @author       Antigravity & 夕颜(初晴主题)
 // @match        https://gemini.google.com/*
@@ -206,6 +206,7 @@
         persona: '',
         branchPersonas: {},
         selectedTags: new Set(['日常点滴']),
+        archiveMode: 'summarize',
         panelOpen: false
     };
 
@@ -217,6 +218,7 @@
             state.embedProvider = state.embedProvider || 'same';
             state.embedKey = state.embedKey || '';
             state.embedBase = state.embedBase || 'https://api.siliconflow.cn/v1';
+            state.archiveMode = ['raw', 'tag_only', 'summarize'].includes(parsed.archiveMode) ? parsed.archiveMode : 'summarize';
             state.branchPersonas = (parsed.branchPersonas && typeof parsed.branchPersonas === 'object' && !Array.isArray(parsed.branchPersonas))
                 ? parsed.branchPersonas
                 : {};
@@ -243,6 +245,7 @@
             rerankModel: state.rerankModel,
             topK: state.topK,
             minScore: state.minScore,
+            archiveMode: state.archiveMode,
             fetchedModels: state.fetchedModels,
             githubPat: state.githubPat,
             githubRepo: state.githubRepo,
@@ -855,13 +858,11 @@
         return await res.json();
     }
 
-    async function summarizeViaGemini(rawText) {
+    async function callUserscriptChatPrompt(sysPrompt, rawText) {
         const cfg = getChatApiConfig();
         const key = cfg.key;
-        if (!key) return { text: rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
-        const sys = `请将以下对话提炼为 100~180 字的精简长期记忆总结，并从 [${state.customTags.join('、')}] 中选 2~3 个标签。只输出 JSON: {"text":"总结内容","tags":["标签1"]}`;
+        if (!key) return null;
 
-        let reply = '';
         if (cfg.useOpenAI) {
             const rawModel = (state.chatModel || '').trim();
             const model = cfg.provider === 'siliconflow'
@@ -876,39 +877,71 @@
                 body: JSON.stringify({
                     model,
                     messages: [
-                        { role: 'system', content: sys },
+                        { role: 'system', content: sysPrompt },
                         { role: 'user', content: rawText }
                     ]
                 })
             });
-            if (!res.ok) return { text: rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
+            if (!res.ok) return null;
             const data = await res.json();
-            reply = (data.choices?.[0]?.message?.content || '').replace(/```json|```/gi, '').trim();
-        } else {
-            const model = state.chatModel || 'gemini-2.5-flash';
-            const res = await safeFetch(`${cfg.base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    systemInstruction: { parts: [{ text: sys }] },
-                    contents: [{ role: 'user', parts: [{ text: rawText }] }],
-                    safetySettings: [
-                        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
-                        { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
-                    ]
-                })
-            });
-            if (!res.ok) return { text: rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
-            const data = await res.json();
-            reply = (data.candidates?.[0]?.content?.parts?.[0]?.text || '').replace(/```json|```/gi, '').trim();
+            return (data.choices?.[0]?.message?.content || '').trim();
         }
+
+        const model = state.chatModel || 'gemini-2.5-flash';
+        const res = await safeFetch(`${cfg.base}/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                systemInstruction: { parts: [{ text: sysPrompt }] },
+                contents: [{ role: 'user', parts: [{ text: rawText }] }],
+                safetySettings: [
+                    { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+                    { category: 'HARM_CATEGORY_CIVIC_INTEGRITY', threshold: 'BLOCK_NONE' }
+                ]
+            })
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return (data.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+    }
+
+    function extractUserscriptJson(reply) {
+        const cleaned = String(reply || '').replace(/```json|```/gi, '').trim();
         try {
-            return JSON.parse(reply);
+            return JSON.parse(cleaned);
         } catch (e) {
-            return { text: reply || rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
+            const m = cleaned.match(/\{[\s\S]*\}/);
+            if (m) return JSON.parse(m[0]);
+            throw e;
+        }
+    }
+
+    async function summarizeViaGemini(rawText) {
+        const sys = `请将以下对话提炼为 100~180 字的精简长期记忆总结，并从 [${state.customTags.join('、')}] 中选 2~3 个标签。只输出 JSON: {"text":"总结内容","tags":["标签1"]}`;
+        const reply = await callUserscriptChatPrompt(sys, rawText);
+        if (reply === null) return { text: rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
+        try {
+            return extractUserscriptJson(reply);
+        } catch (e) {
+            return { text: reply.replace(/```json|```/gi, '').trim() || rawText.slice(0, 220), tags: Array.from(state.selectedTags) };
+        }
+    }
+
+    async function tagOnlyViaGemini(rawText) {
+        const sys = `请阅读用户提供的原文，绝对不要改写、总结或删减原文内容，只需从现有标签池 [${state.customTags.join('、')}] 中挑选 2~3 个最匹配的标签（仅在现有标签都无法覆盖时最多可自拟 1 个简短标签，不要带 # 号），并归纳 1 个简短事件类型。严格只输出 JSON: {"tags":["标签1","标签2"],"eventType":"日常/节日/约定/重要事件"}`;
+        const reply = await callUserscriptChatPrompt(sys, rawText);
+        if (reply === null) return { tags: [], eventType: '' };
+        try {
+            const parsed = extractUserscriptJson(reply);
+            const cleanTags = Array.isArray(parsed.tags)
+                ? Array.from(new Set(parsed.tags.map(t => String(t).trim().replace(/^#+/, '').trim()).filter(Boolean)))
+                : [];
+            return { tags: cleanTags, eventType: String(parsed.eventType || parsed.event || '').trim() };
+        } catch (e) {
+            return { tags: [], eventType: '' };
         }
     }
 
@@ -950,12 +983,13 @@
                 </div>
                 <textarea id="cq-archive-preview" class="cq-textarea" rows="3" placeholder="点「⚡ 一键抓对话入库」会自动读取当前网页上的最新对话（也可在此手动微调）..."></textarea>
                 <div class="cq-tag-list" id="cq-tag-container"></div>
-                <div class="cq-row" style="margin-top:4px;">
-                    <label style="font-size:11.5px;display:flex;align-items:center;gap:4px;cursor:pointer;">
-                        <input type="checkbox" id="cq-chk-ai-sum" checked>
-                        <span>AI 自动提炼100字摘要</span>
-                    </label>
-                    <button class="cq-btn primary" id="cq-btn-oneclick-archive">⚡ 一键抓对话并归档 GitHub</button>
+                <div class="cq-row" style="margin-top:4px;gap:6px;">
+                    <select id="cq-ai-mode" class="cq-select" style="flex:1;min-width:0;font-size:11px;padding:4px 6px;" title="选择归档前 AI 处理方式">
+                        <option value="summarize">✨ AI提炼100字摘要并补标签</option>
+                        <option value="tag_only">🏷️ 仅AI打标签/补事件 (保留原文)</option>
+                        <option value="raw">📝 原样入库 (不调AI)</option>
+                    </select>
+                    <button class="cq-btn primary" id="cq-btn-oneclick-archive" style="flex-shrink:0;">⚡ 抓对话归档</button>
                 </div>
             </div>
 
@@ -1266,9 +1300,19 @@
             document.getElementById('cq-cfg-repo').value = state.githubRepo;
             document.getElementById('cq-recall-topk').value = state.topK || 5;
             document.getElementById('cq-recall-minscore').value = (typeof state.minScore === 'number') ? state.minScore : 0.38;
+            const aiModeSel = document.getElementById('cq-ai-mode');
+            if (aiModeSel) {
+                aiModeSel.value = ['raw', 'tag_only', 'summarize'].includes(state.archiveMode) ? state.archiveMode : 'summarize';
+            }
         }
 
         renderPanelState();
+
+        document.getElementById('cq-ai-mode').addEventListener('change', e => {
+            const m = e.target.value;
+            state.archiveMode = ['raw', 'tag_only', 'summarize'].includes(m) ? m : 'summarize';
+            saveConfig();
+        });
 
         panel.querySelectorAll('.cq-btn-toggle-secret').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -1630,17 +1674,24 @@
             }
 
             const btn = document.getElementById('cq-btn-oneclick-archive');
+            const origText = btn.textContent;
             btn.disabled = true;
-            btn.textContent = '⏳ 正在提炼并算向量...';
+            btn.textContent = '⏳ 正在处理并算向量...';
             try {
+                const mode = document.getElementById('cq-ai-mode').value || 'summarize';
                 let finalText = rawText;
                 let finalTags = Array.from(state.selectedTags);
-                if (document.getElementById('cq-chk-ai-sum').checked) {
+                let finalEvent = '官网一键归档';
+                if (mode === 'summarize') {
                     const sum = await summarizeViaGemini(rawText);
                     if (sum.text) finalText = sum.text;
                     if (Array.isArray(sum.tags)) finalTags = Array.from(new Set([...finalTags, ...sum.tags]));
+                } else if (mode === 'tag_only') {
+                    const tagged = await tagOnlyViaGemini(rawText);
+                    if (Array.isArray(tagged.tags)) finalTags = Array.from(new Set([...finalTags, ...tagged.tags]));
+                    if (tagged.eventType) finalEvent = tagged.eventType;
                 }
-                const vec = await getEmbeddingVector(`${finalTags.join(' ')} ${finalText}`);
+                const vec = await getEmbeddingVector(`${finalEvent} ${finalTags.join(' ')} ${finalText}`);
                 const path = `branches/${state.currentBranch}.json`;
                 const remote = await githubGetFile(path);
                 const slices = Array.isArray(remote?.json) ? remote.json : [];
@@ -1649,7 +1700,7 @@
                     text: finalText,
                     date: getLocalDateStr(),
                     tags: finalTags.length ? finalTags : ['日常点滴'],
-                    event: '官网一键归档',
+                    event: finalEvent,
                     vector: vec
                 });
                 await githubPutFile(path, slices, remote?.sha, 'Archive from gemini.google.com');
@@ -1659,7 +1710,7 @@
                 showToast('归档失败', err.message, 'err');
             } finally {
                 btn.disabled = false;
-                btn.textContent = '⚡ 一键抓对话并归档 GitHub';
+                btn.textContent = origText;
             }
         });
 
